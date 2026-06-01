@@ -1,0 +1,27 @@
+[project]
+name = "gex-receiver"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jonatha-Varjao", email = "jonathavarjao@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "aio-pika>=9.6.2",
+    "asyncmy>=0.2.11",
+    "fastapi>=0.136.3",
+    "gex-common",
+    "sqlalchemy[asyncio]>=2.0",
+    "uvicorn[standard]>=0.48.0",
+]
+
+[project.scripts]
+gex-receiver = "gex_receiver:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+gex-common = { workspace = true }

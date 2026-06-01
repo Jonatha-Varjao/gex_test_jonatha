@@ -1,0 +1,21 @@
+[project]
+name = "gex-common"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jonatha-Varjao", email = "jonathavarjao@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "cryptography>=48.0.0",
+    "email-validator>=2.3.0",
+    "phonenumbers>=9.0.31",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.3",
+    "structlog>=25.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
