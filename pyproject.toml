@@ -37,6 +37,7 @@ ignore_names = [
     "sms_failure_rate", "log_level", "environment", "model_config",
     "max_request_size_kb", "consumer_concurrency",
     "app", "main", "is_valid",
+    "_exchange_dlq", "publish_distribution", "receive_webhook",
 ]
 ignore_decorators = ["pytest.fixture", "pytest.mark.*"]
 make_whitelist = false
