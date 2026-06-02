@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timezone
 
 import structlog
@@ -19,6 +20,7 @@ from gex_common.config import (
     VALID_GATEWAYS,
 )
 from gex_common.crypto import DecryptionError, decrypt_grummer
+from gex_common.logging import anonymize_customer_id
 from gex_common.models import (
     DLQMessage,
     GrummerEncryptedBody,
@@ -167,6 +169,13 @@ async def receive_webhook(
         if payload is None:
             raise RuntimeError("Validation succeeded but payload is None")
 
+        structlog.contextvars.bind_contextvars(
+            gateway=gateway,
+            transaction_id=payload.transaction_id,
+            event=payload.event,
+            customer_id=anonymize_customer_id(payload.customer.email),
+        )
+
         # 8. Idempotency check
         is_new = await check_idempotency(
             session,
@@ -208,6 +217,7 @@ async def receive_webhook(
             )
             await publisher.publish_lead_received(
                 LeadReceivedMessage(
+                    event_id=str(uuid.uuid7()),
                     transaction_id=payload.transaction_id,
                     transaction_time=payload.transaction_time,
                     event=payload.event,

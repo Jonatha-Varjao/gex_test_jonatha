@@ -42,7 +42,7 @@ from gex_common.config import (
 from gex_common.crypto import DecryptionError, decrypt_grummer
 
 # --- Logging ---
-from gex_common.logging import anonymize_customer_id, get_logger, setup_logging
+from gex_common.logging import anonymize_customer_id, setup_logging
 
 # --- Models ---
 from gex_common.models import (
@@ -113,7 +113,6 @@ __all__ = [
     "decrypt_grummer",
     # Logging
     "anonymize_customer_id",
-    "get_logger",
     "setup_logging",
     # Models
     "CustomerData",

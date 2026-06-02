@@ -42,6 +42,7 @@ class GrummerEncryptedBody(BaseModel):
 
 
 class LeadReceivedMessage(BaseModel):
+    event_id: str
     transaction_id: str
     transaction_time: datetime
     event: str
@@ -53,6 +54,7 @@ class LeadReceivedMessage(BaseModel):
 
 
 class DistributionMessage(BaseModel):
+    event_id: str
     order_id: str | None = None
     transaction_id: str
     channel: str
