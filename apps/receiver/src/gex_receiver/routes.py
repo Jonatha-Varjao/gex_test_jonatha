@@ -11,10 +11,10 @@ from gex_common.config import (
     PAYMENT_APPROVED,
     QUEUE_DLQ_DECRYPT_FAILED,
     QUEUE_DLQ_SCHEMA_FAILED,
+    STATUS_ACCEPTED,
     STATUS_DECRYPT_FAILED,
     STATUS_DISCARDED_NON_APPROVED,
     STATUS_DUPLICATE,
-    STATUS_PROCESSED,
     STATUS_SCHEMA_FAILED,
     VALID_GATEWAYS,
 )
@@ -65,7 +65,7 @@ async def receive_webhook(
     # 1. Validate gateway
     if gateway not in VALID_GATEWAYS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid gateway: {gateway}",
         )
 
@@ -119,7 +119,7 @@ async def receive_webhook(
                 return JSONResponse(
                     status_code=status.HTTP_202_ACCEPTED,
                     content=ProcessingResult(
-                        status="decrypt_failed",
+                        status=STATUS_DECRYPT_FAILED,
                         correlation_id=correlation_id,
                         error_detail=str(e),
                     ).model_dump(),
@@ -157,7 +157,7 @@ async def receive_webhook(
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
                 content=ProcessingResult(
-                    status="schema_failed",
+                    status=STATUS_SCHEMA_FAILED,
                     correlation_id=correlation_id,
                     error_detail=errors_str,
                 ).model_dump(),
@@ -189,7 +189,7 @@ async def receive_webhook(
                 correlation_id,
             )
             return ProcessingResult(
-                status="duplicate",
+                status=STATUS_DUPLICATE,
                 correlation_id=correlation_id,
             )
 
@@ -202,7 +202,7 @@ async def receive_webhook(
                 headers,
                 body_original,
                 body_decrypted,
-                STATUS_PROCESSED,
+                STATUS_ACCEPTED,
                 None,
                 correlation_id,
             )
@@ -219,7 +219,7 @@ async def receive_webhook(
                 )
             )
             return ProcessingResult(
-                status="accepted",
+                status=STATUS_ACCEPTED,
                 correlation_id=correlation_id,
             )
 
@@ -236,7 +236,7 @@ async def receive_webhook(
             correlation_id,
         )
         return ProcessingResult(
-            status="discarded",
+            status=STATUS_DISCARDED_NON_APPROVED,
             correlation_id=correlation_id,
         )
 

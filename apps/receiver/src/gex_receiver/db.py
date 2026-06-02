@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -54,20 +55,22 @@ async def insert_raw_payload(
     processing_status: str,
     error_detail: str | None,
     correlation_id: str,
-) -> int:
-    """Insert into raw_payloads table. Returns the inserted row id."""
+) -> str:
+    """Insert into raw_payloads table. Returns the UUIDv7 id of the inserted row."""
+    payload_id = str(uuid.uuid7())
     stmt = text(
         """
         INSERT INTO raw_payloads (
-            gateway, received_at, headers, body_original, body_decrypted,
+            id, gateway, received_at, headers, body_original, body_decrypted,
             processing_status, error_detail, correlation_id
         ) VALUES (
-            :gateway, :received_at, :headers, :body_original, :body_decrypted,
+            :id, :gateway, :received_at, :headers, :body_original, :body_decrypted,
             :processing_status, :error_detail, :correlation_id
         )
         """
     )
     params: dict[str, Any] = {
+        "id": payload_id,
         "gateway": gateway,
         "received_at": received_at,
         "headers": _json_dump(headers),
@@ -77,11 +80,8 @@ async def insert_raw_payload(
         "error_detail": error_detail,
         "correlation_id": correlation_id,
     }
-    result = await session.execute(stmt, params)
-    row_id = result.lastrowid
-    if row_id is None:
-        raise RuntimeError("Failed to insert raw_payload: no lastrowid returned")
-    return int(row_id)
+    await session.execute(stmt, params)
+    return payload_id
 
 
 async def check_idempotency(
@@ -95,17 +95,19 @@ async def check_idempotency(
 
     Returns True if inserted (new), False if duplicate.
     """
+    event_id = str(uuid.uuid7())
     stmt = text(
         """
         INSERT INTO processed_events (
-            gateway, transaction_id, event, correlation_id, created_at
+            id, gateway, transaction_id, event, correlation_id, created_at
         ) VALUES (
-            :gateway, :transaction_id, :event, :correlation_id, NOW(3)
+            :id, :gateway, :transaction_id, :event, :correlation_id, NOW(6)
         )
         ON DUPLICATE KEY UPDATE correlation_id = VALUES(correlation_id)
         """
     )
     params = {
+        "id": event_id,
         "gateway": gateway,
         "transaction_id": transaction_id,
         "event": event,
