@@ -53,7 +53,7 @@ class LeadReceivedMessage(BaseModel):
 
 
 class DistributionMessage(BaseModel):
-    order_id: int | None = None
+    order_id: str | None = None
     transaction_id: str
     channel: str
     customer: CustomerData
