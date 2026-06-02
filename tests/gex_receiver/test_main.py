@@ -1,11 +1,11 @@
-"""Unit tests for the app factory, lifespan, and LoggingMiddleware."""
+"""Unit tests for the app factory, lifespan, and StructLogMiddleware."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 
-from gex_receiver.main import LoggingMiddleware, lifespan
+from gex_receiver.main import StructLogMiddleware, lifespan
 
 pytestmark = pytest.mark.unit
 
@@ -70,14 +70,14 @@ class TestLifespan:
         assert call_order == ["pub_close", "db_close"]
 
 
-class TestLoggingMiddleware:
+class TestStructLogMiddleware:
     async def test_passes_through_non_http_scope(self):
         captured = {}
 
         async def downstream_app(scope, receive, send):
             captured["scope_type"] = scope["type"]
 
-        middleware = LoggingMiddleware(downstream_app)
+        middleware = StructLogMiddleware(downstream_app)
         scope = {"type": "lifespan"}
         receive = MagicMock()
         send = MagicMock()
@@ -87,45 +87,78 @@ class TestLoggingMiddleware:
         assert captured["scope_type"] == "lifespan"
 
     async def test_logs_request_completion_for_http(self):
-        captured_logs: list[dict] = []
+        async def downstream_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = StructLogMiddleware(downstream_app)
+        with patch("gex_receiver.main.get_access_logger") as mock_logger_factory:
+            mock_logger = MagicMock()
+            mock_logger_factory.return_value = mock_logger
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/test",
+                "headers": [],
+            }
+            receive = MagicMock()
+            send = AsyncMock()
+
+            await middleware(scope, receive, send)
+
+        mock_logger.info.assert_called_once()
+        call_kwargs = mock_logger.info.call_args[1]
+        assert mock_logger.info.call_args[0][0] == "request_completed"
+        assert call_kwargs["status_code"] == 200
+        assert "duration_ms" in call_kwargs
+
+    async def test_logs_500_when_no_response_start_sent(self):
+        async def downstream_app(scope, receive, send):
+            pass
+
+        middleware = StructLogMiddleware(downstream_app)
+        with patch("gex_receiver.main.get_access_logger") as mock_logger_factory:
+            mock_logger = MagicMock()
+            mock_logger_factory.return_value = mock_logger
+
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/silent",
+                "headers": [],
+            }
+            receive = MagicMock()
+            send = AsyncMock()
+
+            await middleware(scope, receive, send)
+
+        mock_logger.info.assert_called_once()
+        assert mock_logger.info.call_args[1]["status_code"] == 500
+
+    async def test_response_includes_x_correlation_id_header(self):
+        sent_headers = []
 
         async def downstream_app(scope, receive, send):
             await send({"type": "http.response.start", "status": 200, "headers": []})
             await send({"type": "http.response.body", "body": b"ok"})
 
-        middleware = LoggingMiddleware(downstream_app)
-        with patch.object(middleware, "logger") as mock_logger:
-            mock_logger.info = lambda msg, **kw: captured_logs.append({"msg": msg, **kw})
+        async def tracking_send(message):
+            if message["type"] == "http.response.start":
+                sent_headers.extend((k.decode(), v.decode()) for k, v in message.get("headers", []))
+            await send(message)
 
-            scope = {"type": "http", "method": "GET", "path": "/test"}
+        middleware = StructLogMiddleware(downstream_app)
+        with patch("gex_receiver.main.get_access_logger"):
+            scope = {
+                "type": "http",
+                "method": "GET",
+                "path": "/test",
+                "headers": [(b"x-correlation-id", b"my-custom-id")],
+            }
             receive = MagicMock()
-            send = AsyncMock()
+            send = tracking_send
 
             await middleware(scope, receive, send)
 
-        assert len(captured_logs) == 1
-        log = captured_logs[0]
-        assert log["msg"] == "request_completed"
-        assert log["method"] == "GET"
-        assert log["path"] == "/test"
-        assert log["status_code"] == 200
-        assert "latency_ms" in log
-        assert isinstance(log["latency_ms"], (int, float))
-
-    async def test_logs_500_when_no_response_start_sent(self):
-        captured_logs: list[dict] = []
-
-        async def downstream_app(scope, receive, send):
-            pass
-
-        middleware = LoggingMiddleware(downstream_app)
-        with patch.object(middleware, "logger") as mock_logger:
-            mock_logger.info = lambda msg, **kw: captured_logs.append({"msg": msg, **kw})
-
-            scope = {"type": "http", "method": "GET", "path": "/silent"}
-            receive = MagicMock()
-            send = AsyncMock()
-
-            await middleware(scope, receive, send)
-
-        assert captured_logs[0]["status_code"] == 500
+        assert ("x-correlation-id", "my-custom-id") in sent_headers

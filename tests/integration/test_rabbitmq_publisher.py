@@ -41,6 +41,7 @@ pytestmark = pytest.mark.integration
 
 def _make_lead_msg(correlation_id: str = "test-corr-1") -> LeadReceivedMessage:
     return LeadReceivedMessage(
+        event_id="0190b6c0-7c3e-7abc-9def-123456789012",
         transaction_id="tx-001",
         transaction_time=datetime(2026, 1, 1, 12, 0, 0, tzinfo=None),
         event=EVENT_ORDER_APPROVED,
@@ -77,6 +78,7 @@ def _make_dlq_msg(correlation_id: str = "test-corr-1") -> DLQMessage:
 
 def _make_dist_msg(correlation_id: str = "test-corr-1") -> DistributionMessage:
     return DistributionMessage(
+        event_id="0190b6c0-7c3e-7abc-9def-123456789012",
         order_id="0190b6c0-7c3e-7abc-9def-123456789012",
         transaction_id="tx-001",
         channel=CHANNEL_SMS,
