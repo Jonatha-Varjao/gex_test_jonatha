@@ -1,8 +1,8 @@
-"""Integration tests for RabbitMQPublisher.
+"""Integration tests for RabbitMQPublisher against a real RabbitMQ 4.2 testcontainer.
 
-These tests use real RabbitMQ via testcontainers. Marked as @pytest.mark.integration
-and excluded from default unit test runs. Set DOCKER_HOST to point at your docker
-socket (e.g. unix://$HOME/.docker/run/docker.sock for rootless).
+These tests use real RabbitMQ via testcontainers. Marked as @pytest.mark.integration.
+Requires DOCKER_HOST to point at the Docker Desktop socket on Linux:
+  export DOCKER_HOST="unix://$HOME/.docker/desktop/docker.sock"
 """
 
 import json
@@ -11,6 +11,11 @@ from datetime import datetime
 import pytest
 
 from gex_common.config import (
+    CHANNEL_SMS,
+    EVENT_ORDER_APPROVED,
+    GATEWAY_GRUMMER,
+    GATEWAY_LOUS,
+    PAYMENT_APPROVED,
     QUEUE_DIST_CALLCENTER,
     QUEUE_DIST_DLQ_SMS,
     QUEUE_DIST_EMAIL,
@@ -38,7 +43,7 @@ def _make_lead_msg(correlation_id: str = "test-corr-1") -> LeadReceivedMessage:
     return LeadReceivedMessage(
         transaction_id="tx-001",
         transaction_time=datetime(2026, 1, 1, 12, 0, 0, tzinfo=None),
-        event="order.approved",
+        event=EVENT_ORDER_APPROVED,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -53,9 +58,9 @@ def _make_lead_msg(correlation_id: str = "test-corr-1") -> LeadReceivedMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status="approved",
+            status=PAYMENT_APPROVED,
         ),
-        gateway="lous",
+        gateway=GATEWAY_LOUS,
         correlation_id=correlation_id,
     )
 
@@ -64,7 +69,7 @@ def _make_dlq_msg(correlation_id: str = "test-corr-1") -> DLQMessage:
     return DLQMessage(
         original_payload={"foo": "bar"},
         error_reason="Decryption failed",
-        gateway="grummer",
+        gateway=GATEWAY_GRUMMER,
         correlation_id=correlation_id,
         queue_origin=QUEUE_DLQ_DECRYPT_FAILED,
     )
@@ -72,9 +77,9 @@ def _make_dlq_msg(correlation_id: str = "test-corr-1") -> DLQMessage:
 
 def _make_dist_msg(correlation_id: str = "test-corr-1") -> DistributionMessage:
     return DistributionMessage(
-        order_id=42,
+        order_id="0190b6c0-7c3e-7abc-9def-123456789012",
         transaction_id="tx-001",
-        channel="SMS",
+        channel=CHANNEL_SMS,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -89,9 +94,9 @@ def _make_dist_msg(correlation_id: str = "test-corr-1") -> DistributionMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status="approved",
+            status=PAYMENT_APPROVED,
         ),
-        gateway="lous",
+        gateway=GATEWAY_LOUS,
         correlation_id=correlation_id,
     )
 
@@ -121,7 +126,7 @@ class TestRabbitMQPublisher:
 
         body = json.loads(received.body.decode())
         assert body["transaction_id"] == "tx-001"
-        assert body["gateway"] == "lous"
+        assert body["gateway"] == GATEWAY_LOUS
         assert body["correlation_id"] == "corr-publish-lead"
         assert received.headers["x-correlation-id"] == "corr-publish-lead"
         await received.ack()
@@ -138,7 +143,7 @@ class TestRabbitMQPublisher:
         assert received is not None
 
         body = json.loads(received.body.decode())
-        assert body["gateway"] == "grummer"
+        assert body["gateway"] == GATEWAY_GRUMMER
         assert body["error_reason"] == "Decryption failed"
         assert body["queue_origin"] == QUEUE_DLQ_DECRYPT_FAILED
         assert body["correlation_id"] == "corr-dlq"
@@ -155,8 +160,8 @@ class TestRabbitMQPublisher:
         assert received is not None
 
         body = json.loads(received.body.decode())
-        assert body["channel"] == "SMS"
-        assert body["order_id"] == 42
+        assert body["channel"] == CHANNEL_SMS
+        assert body["order_id"] == "0190b6c0-7c3e-7abc-9def-123456789012"
         assert body["correlation_id"] == "corr-dist"
         await received.ack()
 
