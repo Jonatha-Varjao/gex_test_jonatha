@@ -15,6 +15,9 @@ markers = [
     "slow: tests that take >5 seconds",
 ]
 addopts = "--cov-report=html"
+filterwarnings = [
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers",
+]
 
 [tool.coverage.run]
 source = ["gex_common", "gex_receiver", "gex_worker"]
