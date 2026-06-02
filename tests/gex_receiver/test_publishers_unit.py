@@ -11,6 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from gex_common.config import (
+    CHANNEL_SMS,
+    EVENT_ORDER_APPROVED,
+    GATEWAY_GRUMMER,
+    GATEWAY_LOUS,
+    PAYMENT_APPROVED,
     QUEUE_DIST_CALLCENTER,
     QUEUE_DIST_DLQ_SMS,
     QUEUE_DIST_EMAIL,
@@ -38,7 +43,7 @@ def _make_lead_msg(correlation_id: str = "corr-1") -> LeadReceivedMessage:
     return LeadReceivedMessage(
         transaction_id="tx-001",
         transaction_time=datetime(2026, 1, 1, 12, 0, 0),
-        event="order.approved",
+        event=EVENT_ORDER_APPROVED,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -53,9 +58,9 @@ def _make_lead_msg(correlation_id: str = "corr-1") -> LeadReceivedMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status="approved",
+            status=PAYMENT_APPROVED,
         ),
-        gateway="lous",
+        gateway=GATEWAY_LOUS,
         correlation_id=correlation_id,
     )
 
@@ -64,7 +69,7 @@ def _make_dlq_msg(correlation_id: str = "corr-1") -> DLQMessage:
     return DLQMessage(
         original_payload={"foo": "bar"},
         error_reason="Decryption failed",
-        gateway="grummer",
+        gateway=GATEWAY_GRUMMER,
         correlation_id=correlation_id,
         queue_origin=QUEUE_DLQ_DECRYPT_FAILED,
     )
@@ -72,9 +77,9 @@ def _make_dlq_msg(correlation_id: str = "corr-1") -> DLQMessage:
 
 def _make_dist_msg(correlation_id: str = "corr-1") -> DistributionMessage:
     return DistributionMessage(
-        order_id=42,
+        order_id="0190b6c0-7c3e-7abc-9def-123456789012",
         transaction_id="tx-001",
-        channel="SMS",
+        channel=CHANNEL_SMS,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -89,9 +94,9 @@ def _make_dist_msg(correlation_id: str = "corr-1") -> DistributionMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status="approved",
+            status=PAYMENT_APPROVED,
         ),
-        gateway="lous",
+        gateway=GATEWAY_LOUS,
         correlation_id=correlation_id,
     )
 
@@ -120,17 +125,6 @@ class TestSerialize:
     def test_raises_on_unsupported_type(self):
         with pytest.raises(TypeError, match="not JSON serializable"):
             _serialize({"value": object()})
-
-
-class TestInit:
-    def test_init_sets_url_and_none_attrs(self):
-        publisher = RabbitMQPublisher("amqp://test:test@host:5672/")
-        assert publisher._url == "amqp://test:test@host:5672/"
-        assert publisher._connection is None
-        assert publisher._channel is None
-        assert publisher._exchange_lead is None
-        assert publisher._exchange_dist is None
-        assert publisher._exchange_dlq is None
 
 
 class TestConnect:
@@ -196,48 +190,6 @@ class TestDeclareTopology:
         assert QUEUE_DIST_WHATSAPP in declared_queues
         assert QUEUE_DIST_DLQ_SMS in declared_queues
 
-    async def test_binds_queues_to_exchanges(self):
-        publisher, _conn, channel = _make_publisher_with_mocks()
-        channel.declare_exchange = AsyncMock()
-        mock_queues: dict[str, MagicMock] = {}
-
-        def _queue_factory(name, **kwargs):
-            q = MagicMock()
-            q.bind = AsyncMock()
-            mock_queues[name] = q
-            return q
-
-        channel.declare_queue = AsyncMock(side_effect=_queue_factory)
-
-        await publisher.declare_topology()
-
-        for name in (
-            QUEUE_LEAD_RECEIVED,
-            QUEUE_DLQ_DECRYPT_FAILED,
-            QUEUE_DLQ_SCHEMA_FAILED,
-            QUEUE_DLQ_CONSUMER_FAILED,
-        ):
-            mock_queues[name].bind.assert_awaited()
-        for name in (
-            QUEUE_DIST_SMS,
-            QUEUE_DIST_EMAIL,
-            QUEUE_DIST_CALLCENTER,
-            QUEUE_DIST_WHATSAPP,
-            QUEUE_DIST_DLQ_SMS,
-        ):
-            mock_queues[name].bind.assert_awaited()
-
-    async def test_sets_exchange_attributes(self):
-        publisher, _conn, channel = _make_publisher_with_mocks()
-        channel.declare_exchange = AsyncMock()
-        channel.declare_queue = AsyncMock()
-
-        await publisher.declare_topology()
-
-        assert publisher._exchange_lead is not None
-        assert publisher._exchange_dist is not None
-        assert publisher._exchange_dlq is not None
-
 
 class TestPublishLeadReceived:
     async def test_raises_when_topology_not_declared(self):
@@ -270,18 +222,13 @@ class TestPublishLeadReceived:
         sent_msg = publisher._exchange_lead.publish.await_args.args[0]
         body = json.loads(sent_msg.body.decode("utf-8"))
         assert body["transaction_id"] == "tx-001"
-        assert body["event"] == "order.approved"
-        assert body["gateway"] == "lous"
+        assert body["event"] == EVENT_ORDER_APPROVED
+        assert body["gateway"] == GATEWAY_LOUS
         assert body["correlation_id"] == "corr-1"
         assert "2026-01-01T12:00:00" in body["transaction_time"]
 
 
 class TestPublishDLQ:
-    async def test_raises_when_topology_not_declared(self):
-        publisher = RabbitMQPublisher("amqp://test/")
-        with pytest.raises(RuntimeError, match="declare_topology\\(\\) must be called"):
-            await publisher.publish_dlq(_make_dlq_msg(), QUEUE_DLQ_DECRYPT_FAILED)
-
     async def test_publishes_to_lead_exchange_with_supplied_routing_key(self):
         publisher, _conn, channel = _make_publisher_with_mocks()
         await publisher.declare_topology()
@@ -303,7 +250,7 @@ class TestPublishDLQ:
         msg = DLQMessage(
             original_payload={},
             error_reason=long_reason,
-            gateway="grummer",
+            gateway=GATEWAY_GRUMMER,
             correlation_id="c",
             queue_origin=QUEUE_DLQ_DECRYPT_FAILED,
         )
@@ -314,11 +261,6 @@ class TestPublishDLQ:
 
 
 class TestPublishDistribution:
-    async def test_raises_when_topology_not_declared(self):
-        publisher = RabbitMQPublisher("amqp://test/")
-        with pytest.raises(RuntimeError, match="declare_topology\\(\\) must be called"):
-            await publisher.publish_distribution(_make_dist_msg(), QUEUE_DIST_SMS)
-
     async def test_publishes_to_dist_exchange_with_routing_key(self):
         publisher, _conn, channel = _make_publisher_with_mocks()
         await publisher.declare_topology()

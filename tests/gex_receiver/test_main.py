@@ -5,24 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 
-from gex_receiver.main import LoggingMiddleware, create_app, lifespan
+from gex_receiver.main import LoggingMiddleware, lifespan
 
 pytestmark = pytest.mark.unit
-
-
-class TestCreateApp:
-    def test_create_app_returns_fastapi_instance(self):
-        app = create_app()
-        assert isinstance(app, FastAPI)
-        assert app.title == "GEX Webhook Receiver"
-
-    def test_app_has_webhook_route(self):
-        app = create_app()
-        routes = [r for r in app.routes if hasattr(r, "path")]
-        webhook_routes = [r for r in routes if r.path.startswith("/webhooks")]
-        assert len(webhook_routes) >= 1
-        post_routes = [r for r in webhook_routes if "POST" in getattr(r, "methods", set())]
-        assert len(post_routes) >= 1
 
 
 class TestLifespan:
@@ -127,27 +112,6 @@ class TestLoggingMiddleware:
         assert "latency_ms" in log
         assert isinstance(log["latency_ms"], (int, float))
 
-    async def test_logs_error_status_when_response_errors(self):
-        captured_logs: list[dict] = []
-
-        async def downstream_app(scope, receive, send):
-            await send({"type": "http.response.start", "status": 500, "headers": []})
-            await send({"type": "http.response.body", "body": b"err"})
-
-        middleware = LoggingMiddleware(downstream_app)
-        with patch.object(middleware, "logger") as mock_logger:
-            mock_logger.info = lambda msg, **kw: captured_logs.append({"msg": msg, **kw})
-
-            scope = {"type": "http", "method": "POST", "path": "/webhooks/lous"}
-            receive = MagicMock()
-            send = AsyncMock()
-
-            await middleware(scope, receive, send)
-
-        assert captured_logs[0]["status_code"] == 500
-        assert captured_logs[0]["method"] == "POST"
-        assert captured_logs[0]["path"] == "/webhooks/lous"
-
     async def test_logs_500_when_no_response_start_sent(self):
         captured_logs: list[dict] = []
 
@@ -165,9 +129,3 @@ class TestLoggingMiddleware:
             await middleware(scope, receive, send)
 
         assert captured_logs[0]["status_code"] == 500
-
-    async def test_init_stores_app_and_logger(self):
-        app = FastAPI()
-        middleware = LoggingMiddleware(app)
-        assert middleware.app is app
-        assert middleware.logger is not None

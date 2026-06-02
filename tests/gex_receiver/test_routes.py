@@ -13,9 +13,16 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gex_common.config import (
+    EVENT_ORDER_APPROVED,
     GATEWAY_GRUMMER,
     GATEWAY_LOUS,
+    PAYMENT_APPROVED,
     QUEUE_DLQ_SCHEMA_FAILED,
+    STATUS_ACCEPTED,
+    STATUS_DECRYPT_FAILED,
+    STATUS_DISCARDED_NON_APPROVED,
+    STATUS_DUPLICATE,
+    STATUS_SCHEMA_FAILED,
 )
 from gex_common.models import (
     CustomerData,
@@ -59,7 +66,7 @@ def _build_mock_payload() -> WebhookPayload:
     return WebhookPayload(
         transaction_id="tx-valid-001",
         transaction_time=datetime(2026, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
-        event="order.approved",
+        event=EVENT_ORDER_APPROVED,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -74,7 +81,7 @@ def _build_mock_payload() -> WebhookPayload:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status="approved",
+            status=PAYMENT_APPROVED,
         ),
         gateway=GATEWAY_LOUS,
         correlation_id="test-corr",
@@ -151,7 +158,7 @@ class TestLousValidPayloads:
                 )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "accepted"
+            assert data["status"] == STATUS_ACCEPTED
             assert "correlation_id" in data
             mock_publisher.publish_lead_received.assert_awaited_once()
             mock_publisher.publish_dlq.assert_not_called()
@@ -173,7 +180,7 @@ class TestLousValidPayloads:
                 response = await client.post(f"/webhooks/{GATEWAY_LOUS}", json=payload)
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "discarded"
+            assert data["status"] == STATUS_DISCARDED_NON_APPROVED
             mock_publisher.publish_lead_received.assert_not_called()
             mock_publisher.publish_dlq.assert_not_called()
         finally:
@@ -191,7 +198,7 @@ class TestLousValidPayloads:
                 )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "duplicate"
+            assert data["status"] == STATUS_DUPLICATE
             mock_publisher.publish_lead_received.assert_not_called()
         finally:
             routes_module.check_idempotency = original
@@ -206,7 +213,7 @@ class TestLousValidPayloads:
             response = await client.post(f"/webhooks/{GATEWAY_LOUS}", json=bad_payload)
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "schema_failed"
+        assert data["status"] == STATUS_SCHEMA_FAILED
         assert "error_detail" in data
         mock_publisher.publish_dlq.assert_awaited_once()
         call_args = mock_publisher.publish_dlq.call_args
@@ -231,7 +238,7 @@ class TestGrummerPayloads:
                 )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "accepted"
+            assert data["status"] == STATUS_ACCEPTED
             mock_publisher.publish_lead_received.assert_awaited_once()
         finally:
             routes_module.check_idempotency = original
@@ -250,7 +257,7 @@ class TestGrummerPayloads:
         # Bad ciphertext may either fail decrypt (202) or fail schema (202)
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] in ("decrypt_failed", "schema_failed")
+        assert data["status"] in (STATUS_DECRYPT_FAILED, STATUS_SCHEMA_FAILED)
 
     async def test_grummer_not_encrypted_treated_as_plaintext(
         self, api_client, mock_session, mock_publisher
@@ -270,7 +277,7 @@ class TestGrummerPayloads:
             # Should pass schema and be accepted
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == "accepted"
+            assert data["status"] == STATUS_ACCEPTED
         finally:
             routes_module.check_idempotency = original
 
