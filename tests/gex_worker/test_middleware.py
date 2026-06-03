@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import structlog
 
-from gex_common.config import RETRY_BACKOFFS_MS
+from gex_common.config import CONSTANTS
 from gex_worker.middleware import (
     CorrelationIdMiddleware,
     RetryMiddleware,
@@ -114,7 +114,7 @@ class TestRetryMiddleware:
 
         assert call_next.await_count == 4  # initial + 3 retries
         assert patched_asyncio_sleep.await_count == 3
-        for i, delay_ms in enumerate(RETRY_BACKOFFS_MS):
+        for _, delay_ms in enumerate(CONSTANTS.retry_backoffs_ms):
             patched_asyncio_sleep.assert_any_await(delay_ms / 1000.0)
 
     async def test_re_raises_after_all_retries_exhausted(
@@ -127,9 +127,9 @@ class TestRetryMiddleware:
         with pytest.raises(RuntimeError, match="persistent"):
             await m.consume_scope(call_next, msg)
 
-        expected_attempts = len(RETRY_BACKOFFS_MS) + 1  # initial + len(backoffs)
+        expected_attempts = len(CONSTANTS.retry_backoffs_ms) + 1  # initial + len(backoffs)
         assert call_next.await_count == expected_attempts
-        assert patched_asyncio_sleep.await_count == len(RETRY_BACKOFFS_MS)
+        assert patched_asyncio_sleep.await_count == len(CONSTANTS.retry_backoffs_ms)
 
     async def test_delay_values_match_backoffs(self, mock_context, patched_asyncio_sleep) -> None:
         msg = MagicMock()
@@ -139,7 +139,7 @@ class TestRetryMiddleware:
         with pytest.raises(ValueError):
             await m.consume_scope(call_next, msg)
 
-        expected_delays = [ms / 1000.0 for ms in RETRY_BACKOFFS_MS]
+        expected_delays = [ms / 1000.0 for ms in CONSTANTS.retry_backoffs_ms]
         actual_calls = [c[0][0] for c in patched_asyncio_sleep.await_args_list]
         assert actual_calls == expected_delays
 
@@ -159,14 +159,14 @@ class TestBindStructlogContext:
             customer_id="anon-xyz",
         )
         ctx = structlog.contextvars.get_contextvars()
-        assert ctx["request_id"] == "corr-1"
+        assert ctx["correlation_id"] == "corr-1"
         assert ctx["gateway"] == "grummer"
         assert ctx["event"] == "order.approved"
         assert ctx["customer_id"] == "anon-xyz"
 
     def test_clears_previous_context(self) -> None:
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(request_id="old", leftover="stale")
+        structlog.contextvars.bind_contextvars(correlation_id="old", leftover="stale")
         bind_structlog_context(
             correlation_id="new",
             gateway="lous",
@@ -174,5 +174,5 @@ class TestBindStructlogContext:
             customer_id="anon-abc",
         )
         ctx = structlog.contextvars.get_contextvars()
-        assert ctx["request_id"] == "new"
+        assert ctx["correlation_id"] == "new"
         assert "leftover" not in ctx

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gex_worker.db import close_db, db_session, get_db_session, init_db
+from gex_worker.db import close_db, db_session, init_db
 
 pytestmark = pytest.mark.unit
 
@@ -28,31 +28,9 @@ def _make_session_mock() -> AsyncMock:
     return session
 
 
-def _patch_engine_and_factory():
-    """Patch ``create_async_engine`` and ``async_sessionmaker`` on the db module.
-
-    Returns the mock engine and a callable that creates mock sessions.
-    """
-    mock_engine = MagicMock()
-    mock_engine.dispose = AsyncMock()
-
-    def _patcher():
-        mock_session = _make_session_mock()
-        mock_factory = MagicMock(spec=async_sessionmaker)
-        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
-        return mock_engine, mock_factory, mock_session
-
-    return _patcher
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
+@pytest.mark.usefixtures("reset_worker_db_state")
 class TestInitDb:
-    async def test_creates_engine_with_correct_args(self, reset_worker_db_state) -> None:
+    async def test_creates_engine_with_correct_args(self) -> None:
         with (
             patch("gex_worker.db.create_async_engine") as mock_create,
             patch("gex_worker.db.async_sessionmaker"),
@@ -66,7 +44,7 @@ class TestInitDb:
         assert "pool_size" in kwargs
         assert "max_overflow" in kwargs
 
-    async def test_idempotent(self, reset_worker_db_state) -> None:
+    async def test_idempotent(self) -> None:
         with (
             patch("gex_worker.db.create_async_engine") as mock_create,
             patch("gex_worker.db.async_sessionmaker"),
@@ -76,14 +54,15 @@ class TestInitDb:
 
         mock_create.assert_called_once()  # still only one engine creation
 
-    async def test_raises_if_called_before_init(self, reset_worker_db_state) -> None:
+    async def test_raises_if_called_before_init(self) -> None:
         with pytest.raises(RuntimeError, match="init_db\\(\\) must be called"):
             async with db_session():
                 pass  # pragma: no cover
 
 
+@pytest.mark.usefixtures("reset_worker_db_state")
 class TestCloseDb:
-    async def test_disposes_engine_and_clears_globals(self, reset_worker_db_state) -> None:
+    async def test_disposes_engine_and_clears_globals(self) -> None:
         mock_engine = MagicMock()
         mock_engine.dispose = AsyncMock()
 
@@ -101,12 +80,13 @@ class TestCloseDb:
         assert db_mod._engine is None
         assert db_mod._factory is None
 
-    async def test_close_when_never_initialized(self, reset_worker_db_state) -> None:
+    async def test_close_when_never_initialized(self) -> None:
         await close_db()
 
 
+@pytest.mark.usefixtures("reset_worker_db_state")
 class TestDbSession:
-    async def test_commits_on_success(self, reset_worker_db_state) -> None:
+    async def test_commits_on_success(self) -> None:
         mock_engine = MagicMock()
         mock_session = _make_session_mock()
         mock_factory = MagicMock(spec=async_sessionmaker)
@@ -124,7 +104,7 @@ class TestDbSession:
         mock_session.commit.assert_awaited_once()
         mock_session.rollback.assert_not_called()
 
-    async def test_rolls_back_on_exception(self, reset_worker_db_state) -> None:
+    async def test_rolls_back_on_exception(self) -> None:
         mock_engine = MagicMock()
         mock_session = _make_session_mock()
         mock_factory = MagicMock(spec=async_sessionmaker)
@@ -144,8 +124,4 @@ class TestDbSession:
         mock_session.commit.assert_not_called()
 
 
-class TestGetDbSession:
-    async def test_raises_when_not_initialized(self, reset_worker_db_state) -> None:
-        with pytest.raises(RuntimeError, match="init_db\\(\\) must be called"):
-            async for _ in get_db_session():
-                pass  # pragma: no cover
+

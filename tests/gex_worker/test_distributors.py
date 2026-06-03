@@ -1,144 +1,165 @@
-"""Unit tests for ``gex_worker.distributors.process_sms``.
+from unittest.mock import AsyncMock, MagicMock
 
-Mocks ``httpx.AsyncClient``, ``random.random``, and ``datetime``
-so no HTTP, no randomness, and no wall-clock dependency.
-"""
-
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-
+import httpx
 import pytest
 
-from gex_common.config import CHANNEL_SMS, DIST_STATUS_DELIVERED
-from gex_worker.distributors import SimulatedDistributorFailure, process_sms
+from gex_common.config import CONSTANTS
+from gex_worker.distributors import (
+    PermanentDistributorFailure,
+    SimulatedDistributorFailure,
+    TransientDistributorFailure,
+    process_sms,
+)
 
 pytestmark = pytest.mark.unit
 
-STARTED_AT = datetime(2026, 1, 1, 12, 0, 1, tzinfo=timezone.utc)
-DELIVERED_AT = datetime(2026, 1, 1, 12, 0, 3, tzinfo=timezone.utc)
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(autouse=True)
-def _settings_patches(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch module-level APP_SETTINGS references for deterministic tests."""
-    monkeypatch.setattr("gex_worker.distributors.APP_SETTINGS.sms_failure_rate", 0.1)
+def never_fail(monkeypatch) -> None:
     monkeypatch.setattr(
-        "gex_worker.distributors.APP_SETTINGS.webhook_site_url", "https://hook.example.com"
+        "gex_worker.distributors.random.random", MagicMock(return_value=1.0)
     )
 
 
-@pytest.fixture(autouse=True)
-def _freeze_time(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace ``datetime.now`` in the distributors module with a fixed two-value sequence."""
-
-    class _FakeDt:
-        call_count = 0
-
-        def now(self, tz: object = None) -> datetime:  # noqa: ARG002
-            self.call_count += 1
-            if self.call_count == 1:
-                return STARTED_AT
-            return DELIVERED_AT
-
-    monkeypatch.setattr("gex_worker.distributors.datetime", _FakeDt())
-
-
-@pytest.fixture
-def session() -> AsyncMock:
-    s = AsyncMock()
-    s.execute = AsyncMock()
-    return s
+def _mock_http_client(monkeypatch, status_code: int, **kwargs) -> None:
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    error = kwargs.get("error")
+    if error:
+        mock_response.raise_for_status = MagicMock(side_effect=error)
+    else:
+        mock_response.raise_for_status = MagicMock(return_value=None)
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client_class = MagicMock()
+    mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "gex_worker.distributors.httpx.AsyncClient", mock_client_class
+    )
 
 
-@pytest.fixture
-def msg(dist_msg):
-    return dist_msg
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
-class TestProcessSms:
-    async def test_happy_path(self, msg, session, patched_random, fake_httpx_client) -> None:
-        patched_random.return_value = 0.5  # above sms_failure_rate → no simulated failure
-        await process_sms(msg, "corr-happy", session)
-
-        # HTTP POST was called
-        fake_httpx_client.post.assert_awaited_once()
-        post_args = fake_httpx_client.post.await_args
-        assert post_args[0][0] == "https://hook.example.com"  # url
-        assert "json" in post_args[1] or "json" in post_args.kwargs
-
-        # DB UPDATE was called
-        session.execute.assert_awaited_once()
-        stmt, params = session.execute.await_args.args
-        assert "UPDATE distribution_status" in str(stmt)
-        assert params["status"] == DIST_STATUS_DELIVERED
-        assert params["channel"] == CHANNEL_SMS
-        assert params["order_id"] == msg.order_id
-        assert params["lag"] == 2.0  # DELIVERED_AT - STARTED_AT
-
-    async def test_raises_simulated_failure(
-        self, msg, session, patched_random, fake_httpx_client
+class TestSimulatedFailure:
+    async def test_raises_when_random_below_threshold(
+        self, dist_msg, monkeypatch
     ) -> None:
-        patched_random.return_value = 0.0  # always trigger simulated failure
-        with pytest.raises(SimulatedDistributorFailure, match="simulated sms provider error"):
-            await process_sms(msg, "corr-fail", session)
+        monkeypatch.setattr(
+            "gex_worker.distributors.random.random", MagicMock(return_value=0.05)
+        )
+        with pytest.raises(SimulatedDistributorFailure, match="simulated"):
+            await process_sms(dist_msg, "corr-1", AsyncMock())
 
-        fake_httpx_client.post.assert_not_called()
+    async def test_skips_when_random_above_threshold(
+        self, dist_msg, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            "gex_worker.distributors.random.random", MagicMock(return_value=1.0)
+        )
+        _mock_http_client(monkeypatch, status_code=200)
+        session = AsyncMock()
+        session.execute = AsyncMock()
+        await process_sms(dist_msg, "corr-1", session)
+        session.execute.assert_called_once()
+
+
+class TestPermanentFailure:
+    """Non-retriable 4xx (403, 404, etc.) — straight to DLQ."""
+
+    async def test_403_raises_permanent(self, dist_msg, monkeypatch) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        _mock_http_client(
+            monkeypatch,
+            status_code=403,
+            error=httpx.HTTPStatusError(
+                "403 Forbidden",
+                request=MagicMock(),
+                response=mock_response,
+            ),
+        )
+        session = AsyncMock()
+        session.execute = AsyncMock()
+        session.commit = AsyncMock()
+
+        with pytest.raises(PermanentDistributorFailure, match="HTTPStatusError"):
+            await process_sms(dist_msg, "corr-1", session)
+
+        sql_text = session.execute.call_args[0][0].text
+        assert "status = 'failed'" in sql_text
+        session.commit.assert_awaited_once()
+
+
+class TestTransientFailure:
+    """5xx / 408 / 429 / timeout — raise TransientDistributorFailure for caller to retry."""
+
+    @pytest.mark.parametrize("status_code", [408, 429])
+    async def test_4xx_retriable_raises_transient(
+        self, status_code, dist_msg, monkeypatch
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = status_code
+        _mock_http_client(
+            monkeypatch,
+            status_code=status_code,
+            error=httpx.HTTPStatusError(
+                f"{status_code}",
+                request=MagicMock(),
+                response=mock_response,
+            ),
+        )
+        session = AsyncMock()
+        session.execute = AsyncMock()
+
+        with pytest.raises(TransientDistributorFailure, match="HTTPStatusError"):
+            await process_sms(dist_msg, "corr-1", session)
+
         session.execute.assert_not_called()
 
-    async def test_raises_on_http_error(
-        self, msg, session, patched_random, fake_httpx_client
-    ) -> None:
-        patched_random.return_value = 0.5  # above sms_failure_rate
-        fake_httpx_client.post = AsyncMock(side_effect=ConnectionError("connection refused"))
-        mock_client_cm = MagicMock()
-
-        async def _make_client(*a, **kw):
-            return AsyncMock(post=AsyncMock(side_effect=ConnectionError("connection refused")))
-
-        mock_client_cm.__aenter__ = AsyncMock(side_effect=_make_client)
-        mock_client_cm.__aexit__ = AsyncMock(return_value=None)
-
-        with patch("gex_worker.distributors.httpx.AsyncClient") as mock_cls:
-            mock_cls.return_value = mock_client_cm
-            with pytest.raises(ConnectionError, match="connection refused"):
-                await process_sms(msg, "corr-http", session)
-
-    async def test_raises_on_http_status_error(
-        self, msg, session, patched_random, fake_httpx_client
-    ) -> None:
-        patched_random.return_value = 0.5  # above sms_failure_rate
+    async def test_500_raises_transient(self, dist_msg, monkeypatch) -> None:
         mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = RuntimeError("429 Too Many Requests")
-        mock_client_cm = MagicMock()
+        mock_response.status_code = 500
+        _mock_http_client(
+            monkeypatch,
+            status_code=500,
+            error=httpx.HTTPStatusError(
+                "500 Internal Server Error",
+                request=MagicMock(),
+                response=mock_response,
+            ),
+        )
+        session = AsyncMock()
 
-        async def _make_client(*a, **kw):
-            return AsyncMock(post=AsyncMock(return_value=mock_response))
+        with pytest.raises(TransientDistributorFailure):
+            await process_sms(dist_msg, "corr-1", session)
 
-        mock_client_cm.__aenter__ = AsyncMock(side_effect=_make_client)
-        mock_client_cm.__aexit__ = AsyncMock(return_value=None)
+    async def test_timeout_raises_transient(self, dist_msg, monkeypatch) -> None:
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException(
+            "Connection timed out"
+        ))
+        mock_client_class = MagicMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "gex_worker.distributors.httpx.AsyncClient", mock_client_class
+        )
+        session = AsyncMock()
 
-        with patch("gex_worker.distributors.httpx.AsyncClient") as mock_cls:
-            mock_cls.return_value = mock_client_cm
-            with pytest.raises(RuntimeError, match="429"):
-                await process_sms(msg, "corr-429", session)
+        with pytest.raises(TransientDistributorFailure, match="Timeout"):
+            await process_sms(dist_msg, "corr-1", session)
 
-    async def test_simulated_failure_class(self) -> None:
-        assert issubclass(SimulatedDistributorFailure, Exception)
 
-    async def test_empty_webhook_url_still_called(
-        self, msg, session, patched_random, fake_httpx_client, monkeypatch
-    ) -> None:
-        monkeypatch.setattr("gex_worker.distributors.APP_SETTINGS.webhook_site_url", "")
-        patched_random.return_value = 0.5  # above sms_failure_rate
-        await process_sms(msg, "corr-empty-url", session)
-        fake_httpx_client.post.assert_awaited_once()
+class TestSuccess:
+    async def test_updates_delivered(self, dist_msg, monkeypatch) -> None:
+        _mock_http_client(monkeypatch, status_code=200)
+        session = AsyncMock()
+        session.execute = AsyncMock()
+
+        await process_sms(dist_msg, "corr-1", session)
+
+        session.execute.assert_called_once()
+        sql_text = session.execute.call_args[0][0].text
+        assert "status = :status" in sql_text
+        assert "attempts = 1" in sql_text
+        params = session.execute.call_args[0][1]
+        assert params["status"] == CONSTANTS.dist_status_delivered

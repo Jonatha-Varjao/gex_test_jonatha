@@ -9,12 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from gex_common.config import (
-    CHANNEL_SMS,
-    EVENT_ORDER_APPROVED,
-    GATEWAY_GRUMMER,
-    PAYMENT_APPROVED,
-)
+from gex_common.config import CONSTANTS
 from gex_common.models import (
     CustomerData,
     DistributionMessage,
@@ -35,8 +30,8 @@ def make_lead_msg(**overrides: object) -> LeadReceivedMessage:
         correlation_id="corr-test",
         transaction_id="tx-001",
         transaction_time=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-        event=EVENT_ORDER_APPROVED,
-        gateway=GATEWAY_GRUMMER,
+        event=CONSTANTS.event_order_approved,
+        gateway=CONSTANTS.gateway_grummer,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -51,7 +46,7 @@ def make_lead_msg(**overrides: object) -> LeadReceivedMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status=PAYMENT_APPROVED,
+            status=CONSTANTS.payment_approved,
         ),
     )
     defaults.update(overrides)
@@ -64,7 +59,7 @@ def make_dist_msg(**overrides: object) -> DistributionMessage:
         event_id="0190b6c0-7c3e-7abc-9def-123456789012",
         order_id="0190b6c0-7c3e-7abc-9def-987654321098",
         transaction_id="tx-001",
-        channel=CHANNEL_SMS,
+        channel=CONSTANTS.channel_sms,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -79,9 +74,9 @@ def make_dist_msg(**overrides: object) -> DistributionMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status=PAYMENT_APPROVED,
+            status=CONSTANTS.payment_approved,
         ),
-        gateway=GATEWAY_GRUMMER,
+        gateway=CONSTANTS.gateway_grummer,
         correlation_id="corr-test",
     )
     defaults.update(overrides)

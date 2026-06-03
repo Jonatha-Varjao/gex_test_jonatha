@@ -11,19 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 from testcontainers.mysql import MySqlContainer  # noqa: E402
 from testcontainers.rabbitmq import RabbitMqContainer  # noqa: E402
 
-from gex_common.config import (  # noqa: E402
-    GATEWAY_GRUMMER,
-    GATEWAY_LOUS,
-    QUEUE_DIST_CALLCENTER,
-    QUEUE_DIST_DLQ_SMS,
-    QUEUE_DIST_EMAIL,
-    QUEUE_DIST_SMS,
-    QUEUE_DIST_WHATSAPP,
-    QUEUE_DLQ_CONSUMER_FAILED,
-    QUEUE_DLQ_DECRYPT_FAILED,
-    QUEUE_DLQ_SCHEMA_FAILED,
-    QUEUE_LEAD_RECEIVED,
-)
+from gex_common.config import CONSTANTS  # noqa: E402
 from gex_receiver.publishers import RabbitMQPublisher  # noqa: E402
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -59,12 +47,12 @@ def webhook_payloads():
 
 @pytest.fixture(scope="session")
 def lous_payloads(webhook_payloads):
-    return [p for p in webhook_payloads if p.get("gateway") == GATEWAY_LOUS]
+    return [p for p in webhook_payloads if p.get("gateway") == CONSTANTS.gateway_lous]
 
 
 @pytest.fixture(scope="session")
 def grummer_payloads(webhook_payloads):
-    return [p for p in webhook_payloads if p.get("gateway") == GATEWAY_GRUMMER]
+    return [p for p in webhook_payloads if p.get("gateway") == CONSTANTS.gateway_grummer]
 
 
 @pytest.fixture(scope="session")
@@ -83,15 +71,15 @@ def first_grummer_encrypted(grummer_encrypted_payloads):
 
 
 _QUEUES_TO_PURGE = [
-    QUEUE_LEAD_RECEIVED,
-    QUEUE_DLQ_DECRYPT_FAILED,
-    QUEUE_DLQ_SCHEMA_FAILED,
-    QUEUE_DLQ_CONSUMER_FAILED,
-    QUEUE_DIST_SMS,
-    QUEUE_DIST_EMAIL,
-    QUEUE_DIST_CALLCENTER,
-    QUEUE_DIST_WHATSAPP,
-    QUEUE_DIST_DLQ_SMS,
+    CONSTANTS.queue_lead_received,
+    CONSTANTS.queue_dlq_decrypt_failed,
+    CONSTANTS.queue_dlq_schema_failed,
+    CONSTANTS.queue_dlq_consumer_failed,
+    CONSTANTS.queue_dist_sms,
+    CONSTANTS.queue_dist_email,
+    CONSTANTS.queue_dist_callcenter,
+    CONSTANTS.queue_dist_whatsapp,
+    CONSTANTS.queue_dist_dlq_sms,
 ]
 
 

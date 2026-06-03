@@ -12,14 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gex_common.config import (
-    EVENT_ORDER_APPROVED,
-    GATEWAY_GRUMMER,
-    GATEWAY_LOUS,
-    STATUS_ACCEPTED,
-    STATUS_DECRYPT_FAILED,
-    STATUS_SCHEMA_FAILED,
-)
+from gex_common.config import CONSTANTS
 from gex_receiver.db import (
     Database,
     check_idempotency,
@@ -102,12 +95,12 @@ class TestInsertRawPayload:
         session = _make_session_with_result()
         row_id = await insert_raw_payload(
             session=session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             received_at=datetime(2026, 1, 1, 12, 0, 0),
             headers={"X-Foo": "bar"},
             body_original={"k": "v"},
             body_decrypted=None,
-            processing_status=STATUS_ACCEPTED,
+            processing_status=CONSTANTS.status_accepted,
             error_detail=None,
             correlation_id="corr-1",
         )
@@ -119,12 +112,12 @@ class TestInsertRawPayload:
         received_at = datetime(2026, 1, 1, 12, 0, 0)
         row_id = await insert_raw_payload(
             session=session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             received_at=received_at,
             headers={"X-Foo": "bar"},
             body_original={"k": "v"},
             body_decrypted={"decrypted": True},
-            processing_status=STATUS_ACCEPTED,
+            processing_status=CONSTANTS.status_accepted,
             error_detail=None,
             correlation_id="corr-1",
         )
@@ -134,12 +127,12 @@ class TestInsertRawPayload:
         assert "INSERT INTO raw_payloads" in str(stmt)
         assert params["id"] == row_id
         assert uuid.UUID(params["id"]).version == 7
-        assert params["gateway"] == GATEWAY_LOUS
+        assert params["gateway"] == CONSTANTS.gateway_lous
         assert params["received_at"] == received_at
         assert json.loads(params["headers"]) == {"X-Foo": "bar"}
         assert json.loads(params["body_original"]) == {"k": "v"}
         assert json.loads(params["body_decrypted"]) == {"decrypted": True}
-        assert params["processing_status"] == STATUS_ACCEPTED
+        assert params["processing_status"] == CONSTANTS.status_accepted
         assert params["error_detail"] is None
         assert params["correlation_id"] == "corr-1"
 
@@ -147,12 +140,12 @@ class TestInsertRawPayload:
         session = _make_session_with_result()
         await insert_raw_payload(
             session=session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             received_at=datetime(2026, 1, 1, 12, 0, 0),
             headers={},
             body_original={},
             body_decrypted=None,
-            processing_status=STATUS_SCHEMA_FAILED,
+            processing_status=CONSTANTS.status_schema_failed,
             error_detail="bad schema",
             correlation_id="corr-1",
         )
@@ -163,12 +156,12 @@ class TestInsertRawPayload:
         session = _make_session_with_result()
         await insert_raw_payload(
             session=session,
-            gateway=GATEWAY_GRUMMER,
+            gateway=CONSTANTS.gateway_grummer,
             received_at=datetime(2026, 1, 1, 12, 0, 0),
             headers={},
             body_original={},
             body_decrypted=None,
-            processing_status=STATUS_DECRYPT_FAILED,
+            processing_status=CONSTANTS.status_decrypt_failed,
             error_detail="AES decryption failed",
             correlation_id="corr-1",
         )
@@ -181,9 +174,9 @@ class TestCheckIdempotency:
         session = _make_session_with_result(rowcount=1)
         result = await check_idempotency(
             session=session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-001",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-1",
         )
         assert result is True
@@ -192,9 +185,9 @@ class TestCheckIdempotency:
         session = _make_session_with_result(rowcount=2)
         result = await check_idempotency(
             session=session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-001",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-1",
         )
         assert result is False
@@ -203,9 +196,9 @@ class TestCheckIdempotency:
         session = _make_session_with_result(rowcount=0)
         result = await check_idempotency(
             session=session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-001",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-1",
         )
         assert result is False
@@ -214,7 +207,7 @@ class TestCheckIdempotency:
         session = _make_session_with_result(rowcount=1)
         await check_idempotency(
             session=session,
-            gateway=GATEWAY_GRUMMER,
+            gateway=CONSTANTS.gateway_grummer,
             transaction_id="tx-99",
             event="order.rejected",
             correlation_id="corr-99",
@@ -224,7 +217,7 @@ class TestCheckIdempotency:
         assert "ON DUPLICATE KEY UPDATE" in str(stmt)
         assert "new.correlation_id" in str(stmt)
         assert uuid.UUID(params["id"]).version == 7
-        assert params["gateway"] == GATEWAY_GRUMMER
+        assert params["gateway"] == CONSTANTS.gateway_grummer
         assert params["transaction_id"] == "tx-99"
         assert params["event"] == "order.rejected"
         assert params["correlation_id"] == "corr-99"

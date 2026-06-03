@@ -10,22 +10,7 @@ from datetime import datetime
 
 import pytest
 
-from gex_common.config import (
-    CHANNEL_SMS,
-    EVENT_ORDER_APPROVED,
-    GATEWAY_GRUMMER,
-    GATEWAY_LOUS,
-    PAYMENT_APPROVED,
-    QUEUE_DIST_CALLCENTER,
-    QUEUE_DIST_DLQ_SMS,
-    QUEUE_DIST_EMAIL,
-    QUEUE_DIST_SMS,
-    QUEUE_DIST_WHATSAPP,
-    QUEUE_DLQ_CONSUMER_FAILED,
-    QUEUE_DLQ_DECRYPT_FAILED,
-    QUEUE_DLQ_SCHEMA_FAILED,
-    QUEUE_LEAD_RECEIVED,
-)
+from gex_common.config import CONSTANTS
 from gex_common.models import (
     CustomerData,
     DistributionMessage,
@@ -44,7 +29,7 @@ def _make_lead_msg(correlation_id: str = "test-corr-1") -> LeadReceivedMessage:
         event_id="0190b6c0-7c3e-7abc-9def-123456789012",
         transaction_id="tx-001",
         transaction_time=datetime(2026, 1, 1, 12, 0, 0, tzinfo=None),
-        event=EVENT_ORDER_APPROVED,
+        event=CONSTANTS.event_order_approved,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -59,9 +44,9 @@ def _make_lead_msg(correlation_id: str = "test-corr-1") -> LeadReceivedMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status=PAYMENT_APPROVED,
+            status=CONSTANTS.payment_approved,
         ),
-        gateway=GATEWAY_LOUS,
+        gateway=CONSTANTS.gateway_lous,
         correlation_id=correlation_id,
     )
 
@@ -70,9 +55,9 @@ def _make_dlq_msg(correlation_id: str = "test-corr-1") -> DLQMessage:
     return DLQMessage(
         original_payload={"foo": "bar"},
         error_reason="Decryption failed",
-        gateway=GATEWAY_GRUMMER,
+        gateway=CONSTANTS.gateway_grummer,
         correlation_id=correlation_id,
-        queue_origin=QUEUE_DLQ_DECRYPT_FAILED,
+        queue_origin=CONSTANTS.queue_dlq_decrypt_failed,
     )
 
 
@@ -81,7 +66,7 @@ def _make_dist_msg(correlation_id: str = "test-corr-1") -> DistributionMessage:
         event_id="0190b6c0-7c3e-7abc-9def-123456789012",
         order_id="0190b6c0-7c3e-7abc-9def-123456789012",
         transaction_id="tx-001",
-        channel=CHANNEL_SMS,
+        channel=CONSTANTS.channel_sms,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -96,9 +81,9 @@ def _make_dist_msg(correlation_id: str = "test-corr-1") -> DistributionMessage:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status=PAYMENT_APPROVED,
+            status=CONSTANTS.payment_approved,
         ),
-        gateway=GATEWAY_LOUS,
+        gateway=CONSTANTS.gateway_lous,
         correlation_id=correlation_id,
     )
 
@@ -110,7 +95,6 @@ class TestRabbitMQPublisher:
         # Verify the publisher has the expected references.
         assert rmq_publisher._exchange_lead is not None
         assert rmq_publisher._exchange_dist is not None
-        assert rmq_publisher._exchange_dlq is not None
         assert rmq_publisher._channel is not None
         assert rmq_publisher._connection is not None
 
@@ -121,14 +105,14 @@ class TestRabbitMQPublisher:
 
         # Read the message from the queue
         queue = await rmq_test_channel.declare_queue(
-            QUEUE_LEAD_RECEIVED, durable=True, passive=True
+            CONSTANTS.queue_lead_received, durable=True, passive=True
         )
         received = await queue.get(timeout=5)
         assert received is not None
 
         body = json.loads(received.body.decode())
         assert body["transaction_id"] == "tx-001"
-        assert body["gateway"] == GATEWAY_LOUS
+        assert body["gateway"] == CONSTANTS.gateway_lous
         assert body["correlation_id"] == "corr-publish-lead"
         assert received.headers["x-correlation-id"] == "corr-publish-lead"
         await received.ack()
@@ -136,18 +120,18 @@ class TestRabbitMQPublisher:
     async def test_publish_dlq(self, rmq_publisher: RabbitMQPublisher, rmq_test_channel):
         """Publishing a DLQMessage to lead.dead.decrypt_failed works."""
         msg = _make_dlq_msg("corr-dlq")
-        await rmq_publisher.publish_dlq(msg, QUEUE_DLQ_DECRYPT_FAILED)
+        await rmq_publisher.publish_dlq(msg, CONSTANTS.queue_dlq_decrypt_failed)
 
         queue = await rmq_test_channel.declare_queue(
-            QUEUE_DLQ_DECRYPT_FAILED, durable=True, passive=True
+            CONSTANTS.queue_dlq_decrypt_failed, durable=True, passive=True
         )
         received = await queue.get(timeout=5)
         assert received is not None
 
         body = json.loads(received.body.decode())
-        assert body["gateway"] == GATEWAY_GRUMMER
+        assert body["gateway"] == CONSTANTS.gateway_grummer
         assert body["error_reason"] == "Decryption failed"
-        assert body["queue_origin"] == QUEUE_DLQ_DECRYPT_FAILED
+        assert body["queue_origin"] == CONSTANTS.queue_dlq_decrypt_failed
         assert body["correlation_id"] == "corr-dlq"
         assert received.headers["x-correlation-id"] == "corr-dlq"
         await received.ack()
@@ -155,14 +139,16 @@ class TestRabbitMQPublisher:
     async def test_publish_distribution(self, rmq_publisher: RabbitMQPublisher, rmq_test_channel):
         """Publishing a DistributionMessage to dist.sms works."""
         msg = _make_dist_msg("corr-dist")
-        await rmq_publisher.publish_distribution(msg, QUEUE_DIST_SMS)
+        await rmq_publisher.publish_distribution(msg, CONSTANTS.queue_dist_sms)
 
-        queue = await rmq_test_channel.declare_queue(QUEUE_DIST_SMS, durable=True, passive=True)
+        queue = await rmq_test_channel.declare_queue(
+            CONSTANTS.queue_dist_sms, durable=True, passive=True
+        )
         received = await queue.get(timeout=5)
         assert received is not None
 
         body = json.loads(received.body.decode())
-        assert body["channel"] == CHANNEL_SMS
+        assert body["channel"] == CONSTANTS.channel_sms
         assert body["order_id"] == "0190b6c0-7c3e-7abc-9def-123456789012"
         assert body["correlation_id"] == "corr-dist"
         await received.ack()
@@ -172,15 +158,15 @@ class TestRabbitMQPublisher:
     ):
         """All expected queues are declared and accessible."""
         for queue_name in (
-            QUEUE_LEAD_RECEIVED,
-            QUEUE_DLQ_DECRYPT_FAILED,
-            QUEUE_DLQ_SCHEMA_FAILED,
-            QUEUE_DLQ_CONSUMER_FAILED,
-            QUEUE_DIST_SMS,
-            QUEUE_DIST_EMAIL,
-            QUEUE_DIST_CALLCENTER,
-            QUEUE_DIST_WHATSAPP,
-            QUEUE_DIST_DLQ_SMS,
+            CONSTANTS.queue_lead_received,
+            CONSTANTS.queue_dlq_decrypt_failed,
+            CONSTANTS.queue_dlq_schema_failed,
+            CONSTANTS.queue_dlq_consumer_failed,
+            CONSTANTS.queue_dist_sms,
+            CONSTANTS.queue_dist_email,
+            CONSTANTS.queue_dist_callcenter,
+            CONSTANTS.queue_dist_whatsapp,
+            CONSTANTS.queue_dist_dlq_sms,
         ):
             # passive=True fails if queue doesn't exist
             q = await rmq_test_channel.declare_queue(queue_name, durable=True, passive=True)
@@ -194,4 +180,3 @@ class TestRabbitMQPublisher:
         assert rmq_publisher._channel is None
         assert rmq_publisher._exchange_lead is None
         assert rmq_publisher._exchange_dist is None
-        assert rmq_publisher._exchange_dlq is None

@@ -12,21 +12,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gex_common.config import (
-    EVENT_ORDER_APPROVED,
-    EVENT_ORDER_REFUNDED,
-    GATEWAY_GRUMMER,
-    GATEWAY_LOUS,
-    PAYMENT_APPROVED,
-    PAYMENT_REFUNDED,
-    QUEUE_DLQ_SCHEMA_FAILED,
-    STATUS_ACCEPTED,
-    STATUS_DECRYPT_FAILED,
-    STATUS_DISCARDED_NON_APPROVED,
-    STATUS_DUPLICATE,
-    STATUS_SCHEMA_FAILED,
-    AppSettings,
-)
+from gex_common.config import CONSTANTS, AppSettings
 from gex_common.models import (
     CustomerData,
     PaymentData,
@@ -43,7 +29,7 @@ def _valid_lous_payload() -> dict:
     return {
         "transaction_id": "tx-valid-001",
         "transaction_time": "2026-01-15T10:30:00+00:00",
-        "event": EVENT_ORDER_APPROVED,
+        "event": CONSTANTS.event_order_approved,
         "customer": {
             "email": "test@example.com",
             "first_name": "Test",
@@ -60,7 +46,7 @@ def _valid_lous_payload() -> dict:
         "payment": {
             "amount_usd": 99.99,
             "method": "credit_card",
-            "status": PAYMENT_APPROVED,
+            "status": CONSTANTS.payment_approved,
         },
     }
 
@@ -69,7 +55,7 @@ def _build_mock_payload() -> WebhookPayload:
     return WebhookPayload(
         transaction_id="tx-valid-001",
         transaction_time=datetime(2026, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
-        event=EVENT_ORDER_APPROVED,
+        event=CONSTANTS.event_order_approved,
         customer=CustomerData(
             email="test@example.com",
             first_name="Test",
@@ -84,9 +70,9 @@ def _build_mock_payload() -> WebhookPayload:
         payment=PaymentData(
             amount_usd=99.99,
             method="credit_card",
-            status=PAYMENT_APPROVED,
+            status=CONSTANTS.payment_approved,
         ),
-        gateway=GATEWAY_LOUS,
+        gateway=CONSTANTS.gateway_lous,
         correlation_id="test-corr",
     )
 
@@ -159,11 +145,11 @@ class TestLousValidPayloads:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_LOUS}", json=_valid_lous_payload()
+                    f"/webhooks/{CONSTANTS.gateway_lous}", json=_valid_lous_payload()
                 )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == STATUS_ACCEPTED
+            assert data["status"] == CONSTANTS.status_accepted
             assert "correlation_id" in data
             mock_publisher.publish_lead_received.assert_awaited_once()
             mock_publisher.publish_dlq.assert_not_called()
@@ -179,13 +165,13 @@ class TestLousValidPayloads:
         routes_module.check_idempotency = AsyncMock(return_value=True)
         try:
             payload = _valid_lous_payload()
-            payload["event"] = EVENT_ORDER_REFUNDED
-            payload["payment"]["status"] = PAYMENT_REFUNDED
+            payload["event"] = CONSTANTS.event_order_refunded
+            payload["payment"]["status"] = CONSTANTS.payment_refunded
             async with api_client as client:
-                response = await client.post(f"/webhooks/{GATEWAY_LOUS}", json=payload)
+                response = await client.post(f"/webhooks/{CONSTANTS.gateway_lous}", json=payload)
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == STATUS_DISCARDED_NON_APPROVED
+            assert data["status"] == CONSTANTS.status_discarded_non_approved
             mock_publisher.publish_lead_received.assert_not_called()
             mock_publisher.publish_dlq.assert_not_called()
         finally:
@@ -199,11 +185,11 @@ class TestLousValidPayloads:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_LOUS}", json=_valid_lous_payload()
+                    f"/webhooks/{CONSTANTS.gateway_lous}", json=_valid_lous_payload()
                 )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == STATUS_DUPLICATE
+            assert data["status"] == CONSTANTS.status_duplicate
             mock_publisher.publish_lead_received.assert_not_called()
         finally:
             routes_module.check_idempotency = original
@@ -211,18 +197,18 @@ class TestLousValidPayloads:
     async def test_invalid_schema_returns_202(self, api_client, mock_session, mock_publisher):
         bad_payload = {
             "transaction_id": "tx-001",
-            "event": EVENT_ORDER_APPROVED,
+            "event": CONSTANTS.event_order_approved,
             # Missing transaction_time, customer, product, payment
         }
         async with api_client as client:
-            response = await client.post(f"/webhooks/{GATEWAY_LOUS}", json=bad_payload)
+            response = await client.post(f"/webhooks/{CONSTANTS.gateway_lous}", json=bad_payload)
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] == STATUS_SCHEMA_FAILED
+        assert data["status"] == CONSTANTS.status_schema_failed
         assert "error_detail" in data
         mock_publisher.publish_dlq.assert_awaited_once()
         call_args = mock_publisher.publish_dlq.call_args
-        assert call_args.args[1] == QUEUE_DLQ_SCHEMA_FAILED
+        assert call_args.args[1] == CONSTANTS.queue_dlq_schema_failed
 
 
 class TestGrummerPayloads:
@@ -237,13 +223,13 @@ class TestGrummerPayloads:
             grummer_item = grummer_encrypted_payloads[0]
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_GRUMMER}",
+                    f"/webhooks/{CONSTANTS.gateway_grummer}",
                     json=grummer_item["body"],
                     headers={"X-GR-Encrypted": grummer_item["headers"]["X-GR-Encrypted"]},
                 )
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == STATUS_ACCEPTED
+            assert data["status"] == CONSTANTS.status_accepted
             mock_publisher.publish_lead_received.assert_awaited_once()
         finally:
             routes_module.check_idempotency = original
@@ -255,14 +241,14 @@ class TestGrummerPayloads:
         bad_body = {"iv": "AAAAAAAAAAAAAAAAAAAAAA==", "ciphertext": "Z2FyYmFnZQ=="}
         async with api_client as client:
             response = await client.post(
-                f"/webhooks/{GATEWAY_GRUMMER}",
+                f"/webhooks/{CONSTANTS.gateway_grummer}",
                 json=bad_body,
                 headers={"X-GR-Encrypted": "true"},
             )
         # Bad ciphertext may either fail decrypt (202) or fail schema (202)
         assert response.status_code == 202
         data = response.json()
-        assert data["status"] in (STATUS_DECRYPT_FAILED, STATUS_SCHEMA_FAILED)
+        assert data["status"] in (CONSTANTS.status_decrypt_failed, CONSTANTS.status_schema_failed)
 
     async def test_grummer_not_encrypted_treated_as_plaintext(
         self, api_client, mock_session, mock_publisher
@@ -274,7 +260,7 @@ class TestGrummerPayloads:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_GRUMMER}",
+                    f"/webhooks/{CONSTANTS.gateway_grummer}",
                     json=_valid_lous_payload(),
                     # No X-GR-Encrypted header → treated as plaintext
                 )
@@ -282,7 +268,7 @@ class TestGrummerPayloads:
             # Should pass schema and be accepted
             assert response.status_code == 200
             data = response.json()
-            assert data["status"] == STATUS_ACCEPTED
+            assert data["status"] == CONSTANTS.status_accepted
         finally:
             routes_module.check_idempotency = original
 
@@ -296,7 +282,7 @@ class TestCorrelationId:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_LOUS}",
+                    f"/webhooks/{CONSTANTS.gateway_lous}",
                     json=_valid_lous_payload(),
                     headers={"X-Correlation-ID": "my-custom-id-123"},
                 )
@@ -316,7 +302,7 @@ class TestCorrelationId:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_LOUS}",
+                    f"/webhooks/{CONSTANTS.gateway_lous}",
                     json=_valid_lous_payload(),
                 )
             assert response.status_code == 200
@@ -338,7 +324,7 @@ class TestServiceUnavailable:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_LOUS}",
+                    f"/webhooks/{CONSTANTS.gateway_lous}",
                     json=_valid_lous_payload(),
                 )
             assert response.status_code == 503
@@ -350,7 +336,7 @@ class TestInvalidJsonBody:
     async def test_malformed_json_returns_400(self, api_client, mock_session, mock_publisher):
         async with api_client as client:
             response = await client.post(
-                f"/webhooks/{GATEWAY_LOUS}",
+                f"/webhooks/{CONSTANTS.gateway_lous}",
                 content=b"not-valid-json{",
                 headers={"Content-Type": "application/json"},
             )
@@ -376,7 +362,7 @@ class TestValidationDefensivePath:
         try:
             async with api_client as client:
                 response = await client.post(
-                    f"/webhooks/{GATEWAY_LOUS}",
+                    f"/webhooks/{CONSTANTS.gateway_lous}",
                     json=_valid_lous_payload(),
                 )
             assert response.status_code == 503

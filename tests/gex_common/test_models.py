@@ -3,11 +3,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from gex_common.config import (
-    EVENT_ORDER_APPROVED,
-    GATEWAY_LOUS,
-    PAYMENT_APPROVED,
-)
+from gex_common.config import CONSTANTS
 from gex_common.models import (
     CustomerData,
     PaymentData,
@@ -40,22 +36,22 @@ class TestPaymentData:
 
     def test_negative_amount_rejected(self):
         with pytest.raises(ValidationError):
-            PaymentData(amount_usd=-1.0, method="cc", status=PAYMENT_APPROVED)
+            PaymentData(amount_usd=-1.0, method="cc", status=CONSTANTS.payment_approved)
 
 
 class TestWebhookPayload:
     def test_aware_datetime_required(self):
         cd = CustomerData(email="test@example.com", country="US")
         pd = ProductData(id="P1", name="Widget", niche="tech", quantity=2)
-        pay = PaymentData(amount_usd=50.0, method="cc", status=PAYMENT_APPROVED)
+        pay = PaymentData(amount_usd=50.0, method="cc", status=CONSTANTS.payment_approved)
         with pytest.raises(ValidationError):
             WebhookPayload(
                 transaction_id="txn-001",
                 transaction_time=datetime(2024, 1, 15, 10, 30),
-                event=EVENT_ORDER_APPROVED,
+                event=CONSTANTS.event_order_approved,
                 customer=cd,
                 product=pd,
                 payment=pay,
-                gateway=GATEWAY_LOUS,
+                gateway=CONSTANTS.gateway_lous,
                 correlation_id="corr-001",
             )

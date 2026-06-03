@@ -27,25 +27,16 @@ from hypothesis import strategies as st
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gex_common.config import (
-    ALL_CHANNELS,
-    EVENT_ORDER_APPROVED,
-    EVENT_ORDER_DECLINED,
-    EVENT_ORDER_PENDING,
-    EVENT_ORDER_REFUNDED,
-    GATEWAY_GRUMMER,
-    GATEWAY_LOUS,
-    PAYMENT_APPROVED,
-    STATUS_ACCEPTED,
-    STATUS_DECRYPT_FAILED,
-    VALID_GATEWAYS,
-)
+from gex_common.config import CONSTANTS
 from gex_receiver.db import check_idempotency, insert_raw_payload
 
 pytestmark = pytest.mark.integration
 
-GATEWAYS = sorted(VALID_GATEWAYS)
-EVENTS = [EVENT_ORDER_APPROVED, EVENT_ORDER_REFUNDED, EVENT_ORDER_DECLINED, EVENT_ORDER_PENDING]
+GATEWAYS = sorted(CONSTANTS.valid_gateways)
+EVENTS = [
+    CONSTANTS.event_order_approved, CONSTANTS.event_order_refunded,
+    CONSTANTS.event_order_declined, CONSTANTS.event_order_pending,
+]
 
 
 # ----------------------------------------------------------------------------
@@ -81,12 +72,12 @@ class TestInsertRawPayloadIntegration:
         received_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         row_id = await insert_raw_payload(
             session=db_session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             received_at=received_at,
             headers={"X-Foo": "bar"},
             body_original={"k": "v"},
             body_decrypted=None,
-            processing_status=STATUS_ACCEPTED,
+            processing_status=CONSTANTS.status_accepted,
             error_detail=None,
             correlation_id="corr-1",
         )
@@ -101,19 +92,19 @@ class TestInsertRawPayloadIntegration:
         )
         row = result.first()
         assert row is not None
-        assert row.gateway == GATEWAY_LOUS
-        assert row.processing_status == STATUS_ACCEPTED
+        assert row.gateway == CONSTANTS.gateway_lous
+        assert row.processing_status == CONSTANTS.status_accepted
         assert row.correlation_id == "corr-1"
 
     async def test_inserted_id_is_a_valid_uuidv7(self, db_session: AsyncSession):
         row_id = await insert_raw_payload(
             session=db_session,
-            gateway=GATEWAY_GRUMMER,
+            gateway=CONSTANTS.gateway_grummer,
             received_at=datetime.now(timezone.utc),
             headers={},
             body_original={},
             body_decrypted=None,
-            processing_status=STATUS_DECRYPT_FAILED,
+            processing_status=CONSTANTS.status_decrypt_failed,
             error_detail="AES bad padding",
             correlation_id="corr-x",
         )
@@ -125,12 +116,12 @@ class TestInsertRawPayloadIntegration:
         for i in range(20):
             rid = await insert_raw_payload(
                 session=db_session,
-                gateway=GATEWAY_LOUS,
+                gateway=CONSTANTS.gateway_lous,
                 received_at=datetime.now(timezone.utc),
                 headers={},
                 body_original={"i": i},
                 body_decrypted=None,
-                processing_status=STATUS_ACCEPTED,
+                processing_status=CONSTANTS.status_accepted,
                 error_detail=None,
                 correlation_id=f"corr-{i}",
             )
@@ -149,65 +140,65 @@ class TestCheckIdempotencyIntegration:
     async def test_first_insert_returns_true_and_creates_row(self, db_session: AsyncSession):
         is_new = await check_idempotency(
             session=db_session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-100",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-1",
         )
         assert is_new is True
         await db_session.commit()
-        assert (
-            await _count_processed_events(db_session, GATEWAY_LOUS, "tx-100", EVENT_ORDER_APPROVED)
-            == 1
+        count = await _count_processed_events(
+            db_session, CONSTANTS.gateway_lous, "tx-100", CONSTANTS.event_order_approved
         )
+        assert count == 1
 
     async def test_second_insert_same_key_returns_false(self, db_session: AsyncSession):
         await check_idempotency(
             session=db_session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-101",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-1",
         )
         await db_session.commit()
 
         is_new = await check_idempotency(
             session=db_session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-101",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-2",
         )
         assert is_new is False
         await db_session.commit()
-        assert (
-            await _count_processed_events(db_session, GATEWAY_LOUS, "tx-101", EVENT_ORDER_APPROVED)
-            == 1
+        count = await _count_processed_events(
+            db_session, CONSTANTS.gateway_lous, "tx-101", CONSTANTS.event_order_approved
         )
+        assert count == 1
 
     async def test_different_event_same_transaction_id_returns_true(self, db_session: AsyncSession):
         await check_idempotency(
             session=db_session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-102",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-1",
         )
         await db_session.commit()
 
         is_new = await check_idempotency(
             session=db_session,
-            gateway=GATEWAY_LOUS,
+            gateway=CONSTANTS.gateway_lous,
             transaction_id="tx-102",
-            event=EVENT_ORDER_REFUNDED,
+            event=CONSTANTS.event_order_refunded,
             correlation_id="corr-2",
         )
         assert is_new is True
         await db_session.commit()
-        assert (
-            await _count_processed_events(db_session, GATEWAY_LOUS, "tx-102", EVENT_ORDER_REFUNDED)
-            == 1
+        count = await _count_processed_events(
+            db_session, CONSTANTS.gateway_lous, "tx-102", CONSTANTS.event_order_refunded
         )
+        assert count == 1
 
 
 # ----------------------------------------------------------------------------
@@ -233,9 +224,9 @@ class TestIdempotencyRaceConditions:
         tasks = [
             check_idempotency(
                 session=db_session,
-                gateway=GATEWAY_LOUS,
+                gateway=CONSTANTS.gateway_lous,
                 transaction_id="tx-race",
-                event=EVENT_ORDER_APPROVED,
+                event=CONSTANTS.event_order_approved,
                 correlation_id=f"corr-{i}",
             )
             for i in range(concurrency)
@@ -249,7 +240,7 @@ class TestIdempotencyRaceConditions:
         assert dup_count == concurrency - 1
 
         persisted = await _count_processed_events(
-            db_session, GATEWAY_LOUS, "tx-race", EVENT_ORDER_APPROVED
+            db_session, CONSTANTS.gateway_lous, "tx-race", CONSTANTS.event_order_approved
         )
         assert persisted == 1, "UNIQUE constraint violated — duplicate rows persisted"
 
@@ -356,12 +347,12 @@ class TestRawPayloadConcurrency:
             async with factory() as session:
                 rid = await insert_raw_payload(
                     session=session,
-                    gateway=GATEWAY_LOUS,
+                    gateway=CONSTANTS.gateway_lous,
                     received_at=datetime.now(timezone.utc),
                     headers={},
                     body_original={"i": i},
                     body_decrypted=None,
-                    processing_status=STATUS_ACCEPTED,
+                    processing_status=CONSTANTS.status_accepted,
                     error_detail=None,
                     correlation_id=f"corr-{i}",
                 )
@@ -396,17 +387,17 @@ class TestSpInsertLeadIntegration:
             "last_name": "Doe",
             "phone": "+18005551111",
             "country": "US",
-            "gateway": GATEWAY_LOUS,
+            "gateway": CONSTANTS.gateway_lous,
             "transaction_id": "tx-200",
             "transaction_time": datetime(2026, 1, 1, 12, 0, 0),
-            "event": EVENT_ORDER_APPROVED,
+            "event": CONSTANTS.event_order_approved,
             "product_id": "prod-1",
             "product_name": "Fit Burn",
             "product_niche": "weight_loss",
             "quantity": 1,
             "amount_usd": 99.99,
             "payment_method": "credit_card",
-            "payment_status": PAYMENT_APPROVED,
+            "payment_status": CONSTANTS.payment_approved,
             "correlation_id": "corr-sp-1",
             "lag_seconds": 0.123,
         }
@@ -446,25 +437,30 @@ class TestSpInsertLeadIntegration:
         )
         assert int(result.scalar_one()) == 1
 
-        # distribution_status has 4 rows for the order
+        # distribution_status has 4 rows for the order, all with correlation_id
         result = await db_session.execute(
-            text("SELECT channel FROM distribution_status WHERE order_id = :oid ORDER BY channel"),
+            text(
+                "SELECT channel, correlation_id "
+                "FROM distribution_status WHERE order_id = :oid ORDER BY channel"
+            ),
             {"oid": out["order_id"]},
         )
-        channels = [r.channel for r in result]
-        assert sorted(channels) == sorted(ALL_CHANNELS)
+        rows = list(result)
+        assert sorted(r.channel for r in rows) == sorted(CONSTANTS.all_channels)
+        for r in rows:
+            assert r.correlation_id == "corr-sp-1"
 
     async def test_second_call_same_natural_key_returns_is_new_false(
         self, db_session: AsyncSession
     ):
         first = await self._call_sp(
-            db_session, transaction_id="tx-dup-sp", event=EVENT_ORDER_APPROVED
+            db_session, transaction_id="tx-dup-sp", event=CONSTANTS.event_order_approved
         )
         second = await self._call_sp(
             db_session,
             order_id=first["order_id"],
             transaction_id="tx-dup-sp",
-            event=EVENT_ORDER_APPROVED,
+            event=CONSTANTS.event_order_approved,
             correlation_id="corr-sp-2",
         )
         assert first["is_new"] is True
@@ -485,13 +481,13 @@ class TestSpInsertLeadIntegration:
 
     async def test_different_event_same_order_creates_new_event(self, db_session: AsyncSession):
         first = await self._call_sp(
-            db_session, transaction_id="tx-refund", event=EVENT_ORDER_APPROVED
+            db_session, transaction_id="tx-refund", event=CONSTANTS.event_order_approved
         )
         second = await self._call_sp(
             db_session,
             order_id=first["order_id"],
             transaction_id="tx-refund",
-            event=EVENT_ORDER_REFUNDED,
+            event=CONSTANTS.event_order_refunded,
             correlation_id="corr-refund",
         )
         assert first["is_new"] is True

@@ -330,4 +330,4 @@ class TestValidateSchema:
         data = {**valid_lous_body, "transaction_time": {}}
         result = validate_schema(data)
         assert result.is_valid is False
-        assert any(e.field == "__construct__" for e in result.errors)
+        assert any(e.field == "transaction_time" for e in result.errors)

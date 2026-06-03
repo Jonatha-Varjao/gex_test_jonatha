@@ -15,10 +15,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gex_common.config import (
-    CHANNEL_SMS,
-    DIST_STATUS_DELIVERED,
-)
+from gex_common.config import CONSTANTS
 from gex_worker.consumers import process_lead
 from gex_worker.distributors import process_sms
 from tests.gex_worker.conftest import make_dist_msg, make_lead_msg
@@ -171,10 +168,10 @@ class TestProcessSmsIntegration:
                 "FROM distribution_status "
                 "WHERE order_id = :oid AND channel = :ch"
             ),
-            {"oid": order_id, "ch": CHANNEL_SMS},
+            {"oid": order_id, "ch": CONSTANTS.channel_sms},
         )
         row = result.one()
-        assert row.status == DIST_STATUS_DELIVERED
+        assert row.status == CONSTANTS.dist_status_delivered
         assert row.attempts == 1
         assert row.delivered_at is not None
         assert row.lag_db_to_channel_seconds == 2.0

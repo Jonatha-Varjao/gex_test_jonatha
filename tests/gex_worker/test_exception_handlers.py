@@ -4,11 +4,12 @@ Pure helpers (``_routing_key``, ``_body_dict``) and the
 ``DlqMiddleware.after_processed`` callback.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from gex_common.config import QUEUE_DIST_SMS, QUEUE_LEAD_RECEIVED
+from gex_common.config import CONSTANTS
 from gex_common.models import DLQMessage
 from gex_worker.exception_handlers import (
     DlqMiddleware,
@@ -85,7 +86,7 @@ class TestDlqMiddleware:
     @pytest.fixture
     def fake_message(self) -> MagicMock:
         msg = MagicMock()
-        msg.raw_message.routing_key = QUEUE_LEAD_RECEIVED
+        msg.raw_message.routing_key = CONSTANTS.queue_lead_received
         msg.body = b'{"gateway": "lous"}'
         return msg
 
@@ -102,14 +103,14 @@ class TestDlqMiddleware:
         return m
 
     async def test_noop_when_no_exception(self, middleware, mock_context) -> None:
-        result = await middleware.after_processed(exc_type=None, exc_val=None, exc_tb=None)
+        result = await middleware.after_processed(exc_type=None, exc_val=None, _exc_tb=None)
         assert result is None
         mock_context.get_local.assert_not_called()
 
     async def test_returns_false_when_msg_missing(self, middleware, mock_context) -> None:
         mock_context.get_local.return_value = None
         result = await middleware.after_processed(
-            exc_type=ValueError, exc_val=ValueError("boom"), exc_tb=None
+            exc_type=ValueError, exc_val=ValueError("boom"), _exc_tb=None
         )
         assert result is False
 
@@ -119,19 +120,19 @@ class TestDlqMiddleware:
         mock_context.get_local.return_value = fake_message
         mock_context.get.return_value = None  # broker
         result = await middleware.after_processed(
-            exc_type=ValueError, exc_val=ValueError("boom"), exc_tb=None
+            exc_type=ValueError, exc_val=ValueError("boom"), _exc_tb=None
         )
         assert result is False
 
     async def test_publishes_to_lead_dead_consumer_failed(
         self, middleware, mock_context, fake_message, fake_broker
     ) -> None:
-        fake_message.raw_message.routing_key = QUEUE_LEAD_RECEIVED
+        fake_message.raw_message.routing_key = CONSTANTS.queue_lead_received
         mock_context.get_local.return_value = fake_message
         mock_context.get.return_value = fake_broker
 
         result = await middleware.after_processed(
-            exc_type=RuntimeError, exc_val=RuntimeError("oh no"), exc_tb=None
+            exc_type=RuntimeError, exc_val=RuntimeError("oh no"), _exc_tb=None
         )
 
         assert result is False
@@ -146,13 +147,13 @@ class TestDlqMiddleware:
     async def test_publishes_to_dist_dead_sms(
         self, middleware, mock_context, fake_message, fake_broker
     ) -> None:
-        fake_message.raw_message.routing_key = QUEUE_DIST_SMS
+        fake_message.raw_message.routing_key = CONSTANTS.queue_dist_sms
         fake_message.body = b'{"gateway": "grummer"}'
         mock_context.get_local.return_value = fake_message
         mock_context.get.return_value = fake_broker
 
         result = await middleware.after_processed(
-            exc_type=ConnectionError, exc_val=ConnectionError("timeout"), exc_tb=None
+            exc_type=ConnectionError, exc_val=ConnectionError("timeout"), _exc_tb=None
         )
 
         assert result is False
@@ -172,9 +173,29 @@ class TestDlqMiddleware:
 
         with patch("gex_worker.exception_handlers.logger") as mock_logger:
             result = await middleware.after_processed(
-                exc_type=Exception, exc_val=Exception("weird"), exc_tb=None
+                exc_type=Exception, exc_val=Exception("weird"), _exc_tb=None
             )
 
         assert result is False
         fake_broker.publish.assert_not_called()
         mock_logger.exception.assert_called_once()
+
+    async def test_correlation_id_reads_from_message_body(
+        self, middleware, mock_context, fake_message, fake_broker
+    ) -> None:
+        fake_message.raw_message.routing_key = CONSTANTS.queue_dist_sms
+        fake_message.body = json.dumps({
+            "gateway": "lous",
+            "correlation_id": "from-original-msg-123",
+        }).encode("utf-8")
+        mock_context.get_local.return_value = fake_message
+        mock_context.get.return_value = fake_broker
+
+        await middleware.after_processed(
+            exc_type=RuntimeError, exc_val=RuntimeError("boom"), _exc_tb=None
+        )
+
+        fake_broker.publish.assert_awaited_once()
+        args = fake_broker.publish.await_args
+        dlq_msg = args[0][0]
+        assert dlq_msg.correlation_id == "from-original-msg-123"
