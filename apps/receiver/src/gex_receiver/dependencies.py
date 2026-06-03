@@ -32,7 +32,7 @@ def get_settings(request: Request) -> AppSettings:
 
 
 def get_correlation_id(request: Request) -> str:
-    return structlog.contextvars.get_contextvars().get("request_id", str(uuid4()))
+    return structlog.contextvars.get_contextvars().get("correlation_id", str(uuid4()))
 
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]

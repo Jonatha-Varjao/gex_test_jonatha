@@ -30,10 +30,13 @@ class StructLogMiddleware:
         structlog.contextvars.clear_contextvars()
 
         headers = {k.decode(): v.decode() for k, v in scope.get("headers", [])}
-        correlation_id = headers.get("x-correlation-id") or str(uuid4())
+        correlation_id = headers.get("x-correlation-id")
+        if not correlation_id:
+            correlation_id = str(uuid4())
+            get_app_logger().info("correlation_id_generated", correlation_id=correlation_id)
 
         structlog.contextvars.bind_contextvars(
-            request_id=correlation_id,
+            correlation_id=correlation_id,
             http_method=scope["method"],
             http_path=scope["path"],
         )

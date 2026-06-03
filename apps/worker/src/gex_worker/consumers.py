@@ -11,12 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from gex_common.config import (
-    QUEUE_DIST_CALLCENTER,
-    QUEUE_DIST_EMAIL,
-    QUEUE_DIST_SMS,
-    QUEUE_DIST_WHATSAPP,
-)
+from gex_common.config import CONSTANTS
 from gex_common.logging import anonymize_customer_id, get_app_logger
 from gex_common.models import DistributionMessage, LeadReceivedMessage
 from gex_worker.middleware import bind_structlog_context
@@ -108,10 +103,10 @@ async def process_lead(
     # Publish to the 4 distribution queues if this is a new event.
     if is_new:
         dist_publishes = [
-            (QUEUE_DIST_SMS, "SMS"),
-            (QUEUE_DIST_EMAIL, "EMAIL"),
-            (QUEUE_DIST_CALLCENTER, "CALL_CENTER"),
-            (QUEUE_DIST_WHATSAPP, "WHATSAPP"),
+            (CONSTANTS.queue_dist_sms, "SMS"),
+            (CONSTANTS.queue_dist_email, "EMAIL"),
+            (CONSTANTS.queue_dist_callcenter, "CALL_CENTER"),
+            (CONSTANTS.queue_dist_whatsapp, "WHATSAPP"),
         ]
         for queue_name, channel_name in dist_publishes:
             dist_msg = DistributionMessage(

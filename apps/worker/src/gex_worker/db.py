@@ -63,17 +63,4 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastStream dependency: yields a session for a single message handler.
 
-    The session is committed on success and rolled back on failure.
-    """
-    if _factory is None:
-        raise RuntimeError("init_db() must be called before get_db_session()")
-    async with _factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise

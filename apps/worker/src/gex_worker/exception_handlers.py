@@ -15,7 +15,7 @@ import json
 
 from faststream._internal.middlewares import BaseMiddleware
 
-from gex_common.config import QUEUE_DIST_SMS, QUEUE_LEAD_RECEIVED
+from gex_common.config import CONSTANTS
 from gex_common.logging import get_app_logger
 from gex_common.models import DLQMessage
 from gex_worker.dlq import get_dlq_correlation_id
@@ -23,8 +23,8 @@ from gex_worker.dlq import get_dlq_correlation_id
 logger = get_app_logger()
 
 _DLQ_ROUTES: dict[str, tuple[str, str]] = {
-    QUEUE_LEAD_RECEIVED: ("lead.dead.consumer_failed", "lead"),
-    QUEUE_DIST_SMS: ("dist.dead.sms", "dist"),
+    CONSTANTS.queue_lead_received: ("lead.dead.consumer_failed", "lead"),
+    CONSTANTS.queue_dist_sms: ("dist.dead.sms", "dist"),
 }
 
 
@@ -41,7 +41,7 @@ def _body_dict(msg: object) -> dict:
     body = getattr(msg, "body", b"{}")
     try:
         return json.loads(body)
-    except json.JSONDecodeError, TypeError:
+    except (json.JSONDecodeError, TypeError):
         return {}
 
 
@@ -56,7 +56,7 @@ class DlqMiddleware(BaseMiddleware):
         self,
         exc_type: type[BaseException] | None = None,
         exc_val: BaseException | None = None,
-        exc_tb: object | None = None,
+        _exc_tb: object | None = None,
     ) -> bool | None:
         if exc_type is None or exc_val is None:
             return None
@@ -89,11 +89,18 @@ class DlqMiddleware(BaseMiddleware):
             original_payload=payload,
             error_reason=f"{exc_val.__class__.__name__}: {exc_val}",
             gateway=gateway,
-            correlation_id=get_dlq_correlation_id(),
+            correlation_id=payload.get("correlation_id") or get_dlq_correlation_id(),
             queue_origin=dlq_queue,
         )
 
         await broker.publish(dlq_msg, dlq_queue, exchange=exchange)
-        logger.error("dlq_published", queue=dlq_queue, error=str(exc_val), gateway=gateway)
+        logger.error(
+            "dlq_published",
+            queue=dlq_queue,
+            error=str(exc_val),
+            error_class=exc_type.__name__,
+            gateway=gateway,
+            original_routing_key=rk,
+        )
 
         return False  # Do not suppress — outer middlewares still need the exception

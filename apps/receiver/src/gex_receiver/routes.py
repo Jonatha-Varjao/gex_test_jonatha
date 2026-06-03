@@ -6,19 +6,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from gex_common.config import (
-    EVENT_ORDER_APPROVED,
-    GATEWAY_GRUMMER,
-    PAYMENT_APPROVED,
-    QUEUE_DLQ_DECRYPT_FAILED,
-    QUEUE_DLQ_SCHEMA_FAILED,
-    STATUS_ACCEPTED,
-    STATUS_DECRYPT_FAILED,
-    STATUS_DISCARDED_NON_APPROVED,
-    STATUS_DUPLICATE,
-    STATUS_SCHEMA_FAILED,
-    VALID_GATEWAYS,
-)
+from gex_common.config import CONSTANTS
 from gex_common.crypto import DecryptionError, decrypt_grummer
 from gex_common.logging import anonymize_customer_id
 from gex_common.models import (
@@ -110,7 +98,7 @@ async def receive_webhook(
     received_at = datetime.now(timezone.utc)
 
     # 1. Validate gateway
-    if gateway not in VALID_GATEWAYS:
+    if gateway not in CONSTANTS.valid_gateways:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid gateway: {gateway}",
@@ -133,7 +121,10 @@ async def receive_webhook(
 
     try:
         # 4. Grummer + encrypted → decrypt
-        if gateway == GATEWAY_GRUMMER and headers.get("x-gr-encrypted", "").lower() == "true":
+        if (
+            gateway == CONSTANTS.gateway_grummer
+            and headers.get("x-gr-encrypted", "").lower() == "true"
+        ):
             try:
                 encrypted = GrummerEncryptedBody(**raw_body)
                 plaintext = decrypt_grummer(
@@ -149,10 +140,10 @@ async def receive_webhook(
                     headers,
                     body_original,
                     None,
-                    STATUS_DECRYPT_FAILED,
+                    CONSTANTS.status_decrypt_failed,
                     str(e),
                     body_original,
-                    QUEUE_DLQ_DECRYPT_FAILED,
+                    CONSTANTS.queue_dlq_decrypt_failed,
                     correlation_id,
                 )
 
@@ -172,10 +163,10 @@ async def receive_webhook(
                 headers,
                 body_original,
                 body_decrypted,
-                STATUS_SCHEMA_FAILED,
+                CONSTANTS.status_schema_failed,
                 errors_str,
                 body_decrypted,
-                QUEUE_DLQ_SCHEMA_FAILED,
+                CONSTANTS.queue_dlq_schema_failed,
                 correlation_id,
             )
 
@@ -207,17 +198,20 @@ async def receive_webhook(
                 headers,
                 body_original,
                 body_decrypted,
-                STATUS_DUPLICATE,
+                CONSTANTS.status_duplicate,
                 None,
                 correlation_id,
             )
             return ProcessingResult(
-                status=STATUS_DUPLICATE,
+                status=CONSTANTS.status_duplicate,
                 correlation_id=correlation_id,
             )
 
         # 9. Route
-        if payload.event == EVENT_ORDER_APPROVED and payload.payment.status == PAYMENT_APPROVED:
+        if (
+            payload.event == CONSTANTS.event_order_approved
+            and payload.payment.status == CONSTANTS.payment_approved
+        ):
             await insert_raw_payload(
                 session,
                 gateway,
@@ -225,7 +219,7 @@ async def receive_webhook(
                 headers,
                 body_original,
                 body_decrypted,
-                STATUS_ACCEPTED,
+                CONSTANTS.status_accepted,
                 None,
                 correlation_id,
             )
@@ -243,7 +237,7 @@ async def receive_webhook(
                 )
             )
             return ProcessingResult(
-                status=STATUS_ACCEPTED,
+                status=CONSTANTS.status_accepted,
                 correlation_id=correlation_id,
             )
 
@@ -255,12 +249,12 @@ async def receive_webhook(
             headers,
             body_original,
             body_decrypted,
-            STATUS_DISCARDED_NON_APPROVED,
+            CONSTANTS.status_discarded_non_approved,
             None,
             correlation_id,
         )
         return ProcessingResult(
-            status=STATUS_DISCARDED_NON_APPROVED,
+            status=CONSTANTS.status_discarded_non_approved,
             correlation_id=correlation_id,
         )
 

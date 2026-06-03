@@ -10,7 +10,7 @@ from faststream import BaseMiddleware
 from faststream.message import StreamMessage
 from faststream.types import AsyncFuncAny
 
-from gex_common.config import RETRY_BACKOFFS_MS
+from gex_common.config import CONSTANTS
 from gex_common.logging import get_app_logger
 
 logger = get_app_logger()
@@ -36,20 +36,25 @@ class CorrelationIdMiddleware(BaseMiddleware):
 class RetryMiddleware(BaseMiddleware):
     """Retries failed handler invocations with exponential backoff.
 
-    Backoff schedule:  RETRY_BACKOFFS_MS = [1000, 4000, 16000]  (1s, 4s, 16s).
+    Backoff schedule:  CONSTANTS.retry_backoffs_ms = [1000, 4000, 16000]  (1s, 4s, 16s).
     After all retries are exhausted the original exception is re-raised
     so the ExceptionMiddleware can route the message to the appropriate DLQ.
+
+    Exceptions with ``_no_retry = True`` bypass retry and propagate
+    directly to ``DlqMiddleware``.
     """
 
     async def consume_scope(self, call_next: AsyncFuncAny, msg: StreamMessage) -> None:
-        for attempt in range(len(RETRY_BACKOFFS_MS) + 1):
+        for attempt in range(len(CONSTANTS.retry_backoffs_ms) + 1):
             try:
                 return await call_next(msg)
-            except Exception:
-                if attempt == len(RETRY_BACKOFFS_MS):
+            except Exception as e:
+                if getattr(e, "_no_retry", False):
+                    raise
+                if attempt == len(CONSTANTS.retry_backoffs_ms):
                     logger.exception("failed_after_retries", attempts=attempt + 1)
                     raise
-                delay_ms = RETRY_BACKOFFS_MS[attempt]
+                delay_ms = CONSTANTS.retry_backoffs_ms[attempt]
                 logger.warning(
                     "retrying_after_failure",
                     attempt=attempt + 1,
@@ -65,7 +70,7 @@ def bind_structlog_context(
     """Bind per-message context to structlog contextvars for log tracing."""
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(
-        request_id=correlation_id,
+        correlation_id=correlation_id,
         gateway=gateway,
         event=event,
         customer_id=customer_id,
