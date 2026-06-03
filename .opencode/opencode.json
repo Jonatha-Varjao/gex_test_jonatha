@@ -1,0 +1,25 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "command": {
+        "check": {
+            "description": "Full quality pipeline: lint → format check → vulture → test+cov",
+            "prompt": "Run the quality pipeline in order, stopping on first failure:\n1. uv run ruff check .\n2. uv run ruff format --check .\n3. uv run vulture libs apps tests\n4. uv run pytest tests/ --cov=gex_common --cov=gex_receiver --cov=gex_worker --cov-report=term-missing --cov-report=html --cov-fail-under=90\n\nIf any step fails, fix the issues and re-run until all pass."
+        },
+        "fmt": {
+            "description": "Auto-fix lint issues and format code",
+            "prompt": "Run `uv run ruff check --fix .` then `uv run ruff format .` to auto-fix lint and format issues."
+        },
+        "test": {
+            "description": "Run tests with coverage",
+            "prompt": "Run `uv run pytest tests/ --cov=gex_common --cov=gex_receiver --cov=gex_worker --cov-report=term-missing --cov-report=html --cov-fail-under=90`"
+        },
+        "lint": {
+            "description": "Check for lint issues and unused imports",
+            "prompt": "Run `uv run ruff check .`"
+        },
+        "vulture": {
+            "description": "Check for dead code",
+            "prompt": "Run `uv run vulture libs apps tests`"
+        }
+    }
+}
