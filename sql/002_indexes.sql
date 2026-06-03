@@ -67,7 +67,7 @@
 --   Purpose: THE receiver-layer idempotency constraint. INSERT ... ON
 --            DUPLICATE KEY UPDATE short-circuits on this index.
 --   Query:   INSERT INTO processed_events (...) VALUES (...)
---            ON DUPLICATE KEY UPDATE correlation_id = VALUES(correlation_id);
+--            AS new ON DUPLICATE KEY UPDATE correlation_id = new.correlation_id;
 --   Column order: gateway equality (2 values), transaction_id equality
 --                 (string up to 128 chars), event equality (short string).
 --                 All equality, so the leading column is the one with the

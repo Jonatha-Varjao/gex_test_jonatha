@@ -63,12 +63,12 @@ BEGIN
 
     -- 1. Upsert lead by email. On conflict, refresh mutable fields.
     INSERT INTO leads (id, email, first_name, last_name, phone, country)
-    VALUES (p_lead_id, p_email, p_first_name, p_last_name, p_phone, p_country)
+    VALUES (p_lead_id, p_email, p_first_name, p_last_name, p_phone, p_country) AS new
     ON DUPLICATE KEY UPDATE
-        first_name = VALUES(first_name),
-        last_name  = VALUES(last_name),
-        phone      = VALUES(phone),
-        country    = VALUES(country),
+        first_name = new.first_name,
+        last_name  = new.last_name,
+        phone      = new.phone,
+        country    = new.country,
         updated_at = CURRENT_TIMESTAMP(6);
 
     -- Resolve the actual lead id (may differ from p_lead_id when the
@@ -85,16 +85,20 @@ BEGIN
         p_transaction_time, p_event, p_product_id, p_product_name,
         p_product_niche, p_quantity, p_amount_usd, p_payment_method,
         p_payment_status, p_correlation_id
-    )
+    ) AS new
     ON DUPLICATE KEY UPDATE
-        payment_status = VALUES(payment_status),
-        amount_usd     = VALUES(amount_usd),
-        product_id     = VALUES(product_id),
-        product_name   = VALUES(product_name),
-        product_niche  = VALUES(product_niche),
-        quantity       = VALUES(quantity),
-        payment_method = VALUES(payment_method),
-        correlation_id = VALUES(correlation_id);
+        payment_status = new.payment_status,
+        amount_usd     = new.amount_usd,
+        product_id     = new.product_id,
+        product_name   = new.product_name,
+        product_niche  = new.product_niche,
+        quantity       = new.quantity,
+        payment_method = new.payment_method,
+        correlation_id = new.correlation_id;
+
+    -- Resolve the actual order id (may differ from p_order_id when the
+    -- order already existed under a different UUID).
+    SELECT id INTO p_order_id FROM orders WHERE gateway = p_gateway AND transaction_id = p_transaction_id;
 
     -- 3. Idempotency check: if (order_id, event) already exists, skip.
     SELECT COUNT(*) INTO v_existing_event_count

@@ -5,8 +5,7 @@
 -- All timestamps use TIMESTAMP(6) for microsecond precision (lag calculation).
 
 CREATE DATABASE IF NOT EXISTS gex
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
+    CHARACTER SET utf8mb4;
 
 USE gex;
 
@@ -33,7 +32,7 @@ CREATE TABLE IF NOT EXISTS raw_payloads (
     INDEX idx_raw_status (processing_status),
     INDEX idx_raw_correlation (correlation_id),
     INDEX idx_raw_received_at (received_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------------
 -- 2. processed_events: lightweight idempotency guard.
@@ -51,7 +50,7 @@ CREATE TABLE IF NOT EXISTS processed_events (
     PRIMARY KEY (id),
     UNIQUE INDEX uk_processed_events_natural (gateway, transaction_id, event),
     INDEX idx_processed_events_correlation (correlation_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------------
 -- 3. leads: customer base. UNIQUE on normalized email.
@@ -70,7 +69,7 @@ CREATE TABLE IF NOT EXISTS leads (
                     ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE INDEX uk_leads_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------------
 -- 4. orders: one row per (gateway, transaction_id). FK to leads.
@@ -100,7 +99,7 @@ CREATE TABLE IF NOT EXISTS orders (
     INDEX idx_orders_correlation (correlation_id),
     INDEX idx_orders_gateway_created (gateway, created_at),
     CONSTRAINT fk_orders_leads FOREIGN KEY (lead_id) REFERENCES leads(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------------
 -- 5. lead_events: per-event audit log. The UNIQUE (order_id, event)
@@ -123,7 +122,7 @@ CREATE TABLE IF NOT EXISTS lead_events (
     INDEX idx_lead_events_event_time (event, gateway_timestamp),
     INDEX idx_lead_events_event (event),
     CONSTRAINT fk_lead_events_orders FOREIGN KEY (order_id) REFERENCES orders(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------------
 -- 6. distribution_status: one row per (order, channel).
@@ -152,7 +151,7 @@ CREATE TABLE IF NOT EXISTS distribution_status (
     INDEX idx_dist_pending_since (status, created_at),
     INDEX idx_dist_order (order_id),
     CONSTRAINT fk_dist_orders FOREIGN KEY (order_id) REFERENCES orders(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------------
 -- 7. lead_dead_letter: persistent record of DLQ entries.
@@ -173,4 +172,4 @@ CREATE TABLE IF NOT EXISTS lead_dead_letter (
     INDEX idx_dlq_origin_time (origin, created_at),
     INDEX idx_dlq_correlation (correlation_id),
     INDEX idx_dlq_created_at (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB;
