@@ -3,9 +3,6 @@ import logging
 
 import structlog
 
-APP_LOGGER_NAME = "gex_receiver.app"
-ACCESS_LOGGER_NAME = "gex_receiver.access"
-
 
 def drop_color_message_key(_, __, event_dict):
     """Uvicorn logs the message twice in `color_message`; drop it."""
@@ -62,11 +59,11 @@ def setup_logging(level: str = "INFO") -> None:
 
 
 def get_app_logger() -> structlog.stdlib.BoundLogger:
-    return structlog.stdlib.get_logger(APP_LOGGER_NAME)
+    return structlog.stdlib.get_logger("gex_receiver.app")
 
 
 def get_access_logger() -> structlog.stdlib.BoundLogger:
-    return structlog.stdlib.get_logger(ACCESS_LOGGER_NAME)
+    return structlog.stdlib.get_logger("gex_receiver.access")
 
 
 def anonymize_customer_id(email: str) -> str:

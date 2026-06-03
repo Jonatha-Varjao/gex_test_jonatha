@@ -98,6 +98,7 @@ def validate_schema(data: dict) -> ValidationResult:
             )
     if not any(e.field == "transaction_time" for e in errors):
         raw_time = data.get("transaction_time")
+        parsed_time = None
         if raw_time is not None:
             if isinstance(raw_time, str):
                 try:
@@ -120,6 +121,7 @@ def validate_schema(data: dict) -> ValidationResult:
                         )
                     )
             elif isinstance(raw_time, datetime):
+                parsed_time = raw_time
                 if raw_time.tzinfo is None:
                     errors.append(
                         ValidationError(
@@ -268,13 +270,6 @@ def validate_schema(data: dict) -> ValidationResult:
             method=data["payment"]["method"],
             status=data["payment"]["status"],
         )
-        raw_time = data["transaction_time"]
-        if isinstance(raw_time, str):
-            parsed_time = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
-        elif isinstance(raw_time, datetime):
-            parsed_time = raw_time
-        else:
-            parsed_time = raw_time
         payload = WebhookPayload(
             transaction_id=data["transaction_id"],
             transaction_time=parsed_time,
