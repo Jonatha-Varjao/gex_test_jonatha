@@ -11,3 +11,6 @@ class AppSettings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+
+APP_SETTINGS = AppSettings()
