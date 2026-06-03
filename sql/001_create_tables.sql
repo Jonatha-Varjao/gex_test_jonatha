@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS lead_events (
 CREATE TABLE IF NOT EXISTS distribution_status (
     id                        CHAR(36)      NOT NULL,
     order_id                  CHAR(36)      NOT NULL,
+    correlation_id            CHAR(36)      NOT NULL
+                                            DEFAULT '00000000-0000-0000-0000-000000000000',
     channel                   VARCHAR(32)   NOT NULL,
     status                    VARCHAR(32)   NOT NULL DEFAULT 'pending',
     attempts                  INT           NOT NULL DEFAULT 0,
@@ -150,6 +152,7 @@ CREATE TABLE IF NOT EXISTS distribution_status (
     INDEX idx_dist_delivered_at (channel, delivered_at),
     INDEX idx_dist_pending_since (status, created_at),
     INDEX idx_dist_order (order_id),
+    INDEX idx_dist_correlation (correlation_id),
     CONSTRAINT fk_dist_orders FOREIGN KEY (order_id) REFERENCES orders(id)
 ) ENGINE=InnoDB;
 

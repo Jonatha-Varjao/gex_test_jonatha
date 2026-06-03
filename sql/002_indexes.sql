@@ -224,6 +224,14 @@
 --   Query:   SELECT order_id, channel FROM distribution_status
 --            WHERE status = 'pending' AND created_at < NOW() - INTERVAL 5 MINUTE;
 
+-- idx_dist_correlation
+--   Table: distribution_status
+--   Columns: (correlation_id)
+--   Purpose: Trace a distribution_status row back to the HTTP request that
+--            produced it, enabling end-to-end correlation across all channels.
+--   Query:   SELECT * FROM distribution_status WHERE correlation_id = ?;
+--   Without it: full table scan for a single-row lookup.
+
 
 -- ============================================================================
 -- lead_dead_letter

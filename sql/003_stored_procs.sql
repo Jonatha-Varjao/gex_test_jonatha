@@ -114,12 +114,12 @@ BEGIN
             p_transaction_time, CURRENT_TIMESTAMP(6), p_lag_seconds
         );
 
-        INSERT IGNORE INTO distribution_status (id, order_id, channel, status)
+        INSERT IGNORE INTO distribution_status (id, order_id, channel, status, correlation_id)
         VALUES
-            (p_dist_sms_id,        p_order_id, 'SMS',         'pending'),
-            (p_dist_email_id,      p_order_id, 'EMAIL',       'pending'),
-            (p_dist_callcenter_id, p_order_id, 'CALL_CENTER', 'pending'),
-            (p_dist_whatsapp_id,   p_order_id, 'WHATSAPP',    'pending');
+            (p_dist_sms_id,        p_order_id, 'SMS',         'pending', p_correlation_id),
+            (p_dist_email_id,      p_order_id, 'EMAIL',       'pending', p_correlation_id),
+            (p_dist_callcenter_id, p_order_id, 'CALL_CENTER', 'pending', p_correlation_id),
+            (p_dist_whatsapp_id,   p_order_id, 'WHATSAPP',    'pending', p_correlation_id);
 
         SET v_is_new = 1;
     END IF;
