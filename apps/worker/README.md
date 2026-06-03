@@ -24,7 +24,7 @@ uv run --package gex-worker faststream run gex_worker.main:app
 ## Retry + DLQ Strategy
 
 - Backoffs: `[1000ms, 4000ms, 16000ms]` (×4 geometric progression)
-- Implemented via custom `RetryMiddleware(BaseMiddleware)` — increments `x-retry-count` header
+- Implemented via custom `RetryMiddleware(BaseMiddleware)`
 - After 3 attempts, `DlqMiddleware.after_processed()` publishes to `lead.dead.consumer_failed` or `dist.dead.sms`
 
 ## SMS Distributor
