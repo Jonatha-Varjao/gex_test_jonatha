@@ -1,3 +1,4 @@
+from pydantic import BaseModel, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,7 @@ class AppSettings(BaseSettings):
     grummer_secret_hex: str = ""
     webhook_site_url: str = ""
     sms_failure_rate: float = 0.1
+    distributor_max_retries: int = 3
     log_level: str = "INFO"
     environment: str = "development"
     model_config = SettingsConfigDict(
@@ -18,45 +20,63 @@ class AppSettings(BaseSettings):
     )
 
 
-# Module-level constants (queues, gateways, events, statuses, etc.)
-QUEUE_LEAD_RECEIVED = "lead.received"
-QUEUE_DLQ_DECRYPT_FAILED = "lead.dead.decrypt_failed"
-QUEUE_DLQ_SCHEMA_FAILED = "lead.dead.schema_failed"
-QUEUE_DLQ_CONSUMER_FAILED = "lead.dead.consumer_failed"
-QUEUE_DIST_SMS = "dist.sms"
-QUEUE_DIST_EMAIL = "dist.email"
-QUEUE_DIST_CALLCENTER = "dist.callcenter"
-QUEUE_DIST_WHATSAPP = "dist.whatsapp"
-QUEUE_DIST_DLQ_SMS = "dist.dead.sms"
+class GexConstants(BaseModel):
+    # Queues
+    queue_lead_received: str = "lead.received"
+    queue_dlq_decrypt_failed: str = "lead.dead.decrypt_failed"
+    queue_dlq_schema_failed: str = "lead.dead.schema_failed"
+    queue_dlq_consumer_failed: str = "lead.dead.consumer_failed"
+    queue_dist_sms: str = "dist.sms"
+    queue_dist_email: str = "dist.email"
+    queue_dist_callcenter: str = "dist.callcenter"
+    queue_dist_whatsapp: str = "dist.whatsapp"
+    queue_dist_dlq_sms: str = "dist.dead.sms"
 
-GATEWAY_GRUMMER = "grummer"
-GATEWAY_LOUS = "lous"
-VALID_GATEWAYS = {GATEWAY_GRUMMER, GATEWAY_LOUS}
+    # Gateways
+    gateway_grummer: str = "grummer"
+    gateway_lous: str = "lous"
 
-EVENT_ORDER_APPROVED = "order.approved"
-EVENT_ORDER_REFUNDED = "order.refunded"
-EVENT_ORDER_DECLINED = "order.declined"
-EVENT_ORDER_PENDING = "order.pending"
+    # Events
+    event_order_approved: str = "order.approved"
+    event_order_refunded: str = "order.refunded"
+    event_order_declined: str = "order.declined"
+    event_order_pending: str = "order.pending"
 
-PAYMENT_APPROVED = "approved"
-PAYMENT_DECLINED = "declined"
-PAYMENT_REFUNDED = "refunded"
-PAYMENT_PENDING = "pending"
+    # Payment
+    payment_approved: str = "approved"
+    payment_refunded: str = "refunded"
 
-CHANNEL_SMS = "SMS"
-CHANNEL_EMAIL = "EMAIL"
-CHANNEL_CALL_CENTER = "CALL_CENTER"
-CHANNEL_WHATSAPP = "WHATSAPP"
-ALL_CHANNELS = [CHANNEL_SMS, CHANNEL_EMAIL, CHANNEL_CALL_CENTER, CHANNEL_WHATSAPP]
+    # Channels
+    channel_sms: str = "SMS"
+    channel_email: str = "EMAIL"
+    channel_call_center: str = "CALL_CENTER"
+    channel_whatsapp: str = "WHATSAPP"
 
-STATUS_ACCEPTED = "accepted"
-STATUS_DECRYPT_FAILED = "decrypt_failed"
-STATUS_SCHEMA_FAILED = "schema_failed"
-STATUS_DUPLICATE = "duplicate"
-STATUS_DISCARDED_NON_APPROVED = "discarded_non_approved"
+    # Lead status
+    status_accepted: str = "accepted"
+    status_decrypt_failed: str = "decrypt_failed"
+    status_schema_failed: str = "schema_failed"
+    status_duplicate: str = "duplicate"
+    status_discarded_non_approved: str = "discarded_non_approved"
 
-MAX_RETRIES = 3
-RETRY_BACKOFFS_MS = [1000, 4000, 16000]
-DIST_STATUS_PENDING = "pending"
-DIST_STATUS_DELIVERED = "delivered"
-DIST_STATUS_FAILED = "failed"
+    # Distribution status + retry
+    dist_status_delivered: str = "delivered"
+    dist_status_failed: str = "failed"
+    retry_backoffs_ms: list[int] = [1000, 4000, 16000]
+
+    @computed_field
+    @property
+    def valid_gateways(self) -> set[str]:
+        return {self.gateway_grummer, self.gateway_lous}
+
+    @computed_field
+    @property
+    def all_channels(self) -> list[str]:
+        return [
+            self.channel_sms, self.channel_email,
+            self.channel_call_center, self.channel_whatsapp,
+        ]
+
+
+APP_SETTINGS = AppSettings()
+CONSTANTS = GexConstants()
