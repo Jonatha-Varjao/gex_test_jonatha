@@ -57,10 +57,10 @@ gex_test_jonatha/
 │   ├── 003_stored_procs.sql
 │   └── audit_queries.sql
 ├── tests/
-│   ├── gex_common/                 # 75 unit tests
-│   ├── gex_receiver/               # 48 unit tests
-│   ├── gex_worker/                 # (empty — worker coverage pending)
-│   └── integration/                # 22 tests (testcontainers: real MySQL + RabbitMQ)
+│   ├── gex_common/                 
+│   ├── gex_receiver/               
+│   ├── gex_worker/                 
+│   └── integration/                
 ├── scripts/
 │   └── load_payloads.py            # 200-payload E2E driver
 ├── docs/                           # explicativo.md + _explain/
@@ -74,11 +74,11 @@ gex_test_jonatha/
 
 ### Prerequisites
 
-- **Docker + Docker Compose** — the only host-side requirement
+- **Docker + Docker Compose** the only host-side requirement
 
 That's it. The receiver and worker ship as pre-built multi-stage images; no Python interpreter, `uv`, or compiler is needed on the host.
 
-### Docker Compose — Full Stack (recommended)
+### Docker Compose - Full Stack (recommended)
 
 **1. Configure secrets:**
 
@@ -101,10 +101,10 @@ This builds two lean production images from per-app Dockerfiles and starts four 
 | `mysql` | `mysql:8.4` | 3306 | (always) |
 | `rabbitmq` | `rabbitmq:4.2-management` | 5672 / 15672 | (always) |
 | `receiver` | `gex_test_jonatha-receiver:latest` (built from `apps/receiver/Dockerfile`) | 8000 | (always) |
-| `worker` | `gex_test_jonatha-worker:latest` (built from `apps/worker/Dockerfile`) | — | (always) |
-| `e2e-driver` | `gex_test_jonatha-e2e:latest` (built from `Dockerfile.e2e`) | — | `e2e` |
+| `worker` | `gex_test_jonatha-worker:latest` (built from `apps/worker/Dockerfile`) |  | (always) |
+| `e2e-driver` | `gex_test_jonatha-e2e:latest` (built from `Dockerfile.e2e`) |  | `e2e` |
 
-The receiver image contains `gex_common` + `gex_receiver` only; the worker image contains `gex_common` + `gex_worker` only. The modularization is preserved at the image layer — a worker rebuild does not need to touch the receiver.
+The receiver image contains `gex_common` + `gex_receiver` only; the worker image contains `gex_common` + `gex_worker` only. The modularization is preserved at the image layer - a worker rebuild does not need to touch the receiver.
 
 **3. Verify the stack:**
 
@@ -137,7 +137,7 @@ docker compose down           # keeps volumes
 docker compose down -v        # nukes the DB + RMQ volumes (clean slate)
 ```
 
-### Bare-Metal — Local Development (optional)
+### Bare-Metal - Local Development (optional)
 
 For hacking on the apps with a live-reload Python process, run only the **infrastructure** under Docker and the apps on the host with `uv`:
 
@@ -182,17 +182,15 @@ Configured via `.env` (see `.env.example` for template):
 | `DATABASE_POOL_SIZE` | `10` | SQLAlchemy pool size |
 | `DATABASE_MAX_OVERFLOW` | `20` | Max overflow connections |
 | `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection |
-| `GRUMMER_SECRET_HEX` | *(required for grummer)* | 32-byte AES key in hex (formerly `data/grummer_secret.txt`, now env-only) |
+| `GRUMMER_SECRET_HEX` | *(required for grummer)* | 32-byte AES key in hex  |
 | `WEBHOOK_SITE_URL` | *(empty)* | Target URL for SMS distributor |
 | `SMS_FAILURE_RATE` | `0.1` | Simulated SMS failure rate (0-1) |
 | `LOG_LEVEL` | `INFO` | structlog log level |
 | `ENVIRONMENT` | `development` | Environment name |
-| `MAX_REQUEST_SIZE_KB` | `1024` | Max webhook body size |
-| `CONSUMER_CONCURRENCY` | `1` | Worker consumer concurrency (reserved; not yet wired into FastStream) |
 
 ## Quality Gate Suite
 
-### Lint — Ruff
+### Lint - Ruff
 
 ```bash
 uv run ruff check .
@@ -204,14 +202,14 @@ Auto-fix:
 uv run ruff check --fix .
 ```
 
-### Format — Ruff
+### Format - Ruff
 
 ```bash
 uv run ruff format --check .   # check only
 uv run ruff format .            # apply formatting
 ```
 
-### Tests — Pytest
+### Tests - Pytest
 
 ```bash
 # All tests
@@ -231,8 +229,8 @@ uv run pytest --cov
 ```
 
 Test markers are defined in `pyproject.toml`:
-- `unit` — no external dependencies
-- `integration` — uses testcontainers (requires Docker; set `DOCKER_HOST` to your socket)
+- `unit` - no external dependencies
+- `integration` - uses testcontainers (requires Docker; set `DOCKER_HOST` to your socket)
 
 #### Docker setup for integration tests
 
@@ -247,7 +245,7 @@ export DOCKER_HOST="unix://$HOME/.docker/desktop/docker.sock"
 # Rootless Docker
 export DOCKER_HOST="unix://$HOME/.docker/run/docker.sock"
 
-# System Docker (you're in the `docker` group) — also the default if unset
+# System Docker (you're in the `docker` group)
 export DOCKER_HOST="unix:///var/run/docker.sock"
 ```
 
@@ -265,7 +263,7 @@ Verify your setup before running tests:
 DOCKER_HOST="unix://$HOME/.docker/desktop/docker.sock" docker run --rm rabbitmq:4.2-management rabbitmq-diagnostics ping
 ```
 
-### Dead Code — Vulture
+### Dead Code - Vulture
 
 ```bash
 uv run vulture libs apps --exclude tests/
@@ -287,11 +285,11 @@ uv run vulture libs apps --exclude tests/
 Receives a webhook from `grummer` (AES-256-CBC encrypted) or `lous` (plaintext).
 
 **Path params:**
-- `gateway` — `grummer` or `lous` (422 if invalid)
+- `gateway` - `grummer` or `lous` (422 if invalid)
 
 **Headers:**
-- `X-GR-Encrypted: true` — required for grummer encrypted payloads
-- `X-Correlation-ID` — optional; auto-generated UUID4 if absent
+- `X-GR-Encrypted: true` - required for grummer encrypted payloads
+- `X-Correlation-ID` - optional; auto-generated UUID4 if absent
 
 **Request body:**
 
@@ -338,8 +336,8 @@ For `lous` or `grummer` plaintext:
 | 200 | `discarded` | Valid but not approved (logged only) |
 | 202 | `decrypt_failed` | Grummer payload failed AES decryption |
 | 202 | `schema_failed` | Schema validation failed |
-| 422 | — | Invalid gateway |
-| 503 | — | DB or RabbitMQ unavailable |
+| 422 |  | Invalid gateway |
+| 503 |  | DB or RabbitMQ unavailable |
 
 **Idempotency natural key**: the receiver dedups on `(transaction_id, event)`, *not* `(gateway, transaction_id, event)`. The `gateway` column is stored in `processed_events` for tracking but is excluded from the `UNIQUE` constraint, so the same order arriving from two different gateways is treated as one event. See `sql/001_create_tables.sql:51`.
 
@@ -358,21 +356,21 @@ For `lous` or `grummer` plaintext:
 |-----------|--------|-------|
 | `gex_common` (config, crypto, models, validation, logging) | Done | 75 unit |
 | `gex_receiver` (HTTP layer + idempotency + DLQ publisher) | Done | 48 unit |
-| `gex_worker` (FastStream consumer + 3-attempt retry + DLQ middleware + SMS distributor) | Done | — |
+| `gex_worker` (FastStream consumer + 3-attempt retry + DLQ middleware + SMS distributor) | Done |  |
 | DB layer (CRUD + stored procedures, `tests/integration/test_mysql_db.py`) | Done | 16 integration |
 | RabbitMQ publisher (`tests/integration/test_rabbitmq_publisher.py`) | Done | 6 integration |
-| Audit queries (`sql/audit_queries.sql`) | Done | — |
-| E2E with real MySQL 8.4 + RabbitMQ 4.2 (`scripts/load_payloads.py`) | Verified, see [End-to-End Validation](#end-to-end-validation) | — |
+| Audit queries (`sql/audit_queries.sql`) | Done |  |
+| E2E with real MySQL 8.4 + RabbitMQ 4.2 (`scripts/load_payloads.py`) | Verified, see [End-to-End Validation](#end-to-end-validation) |  |
 | `gex_worker` unit tests | Pending | 0 |
-| Receiver + worker Dockerfiles (`apps/<app>/Dockerfile`) | Done | — |
-| `docs/explicativo.md` | Done | — |
-| Loom walkthrough | Pending | — |
+| Receiver + worker Dockerfiles (`apps/<app>/Dockerfile`) | Done |  |
+| `docs/explicativo.md` | Done |  |
+| Loom walkthrough | Pending |  |
 
 Total: **145 tests collected** (123 unit, 22 integration).
 
 ## End-to-End Validation
 
-The pipeline is validated end-to-end against the real dataset in `data/webhook_payloads.json` (200 webhooks). **Reproduction requires only Docker** — no Python, `uv`, or compiler is needed on the host. The driver, receiver, and worker are all built as separate per-app Docker images and brought up with `docker compose`.
+The pipeline is validated end-to-end against the real dataset in `data/webhook_payloads.json` (200 webhooks). **Reproduction requires only Docker** - no Python, `uv`, or compiler is needed on the host. The driver, receiver, and worker are all built as separate per-app Docker images and brought up with `docker compose`.
 
 ### 1. Build the images and start the stack
 
@@ -385,10 +383,10 @@ docker compose up -d --build
 
 This builds and starts:
 
-- `mysql` (port 3306) — DDL/stored procs from `sql/*.sql` auto-load on first boot
-- `rabbitmq` (5672, UI on 15672) — management plugin
-- `receiver` (port 8000) — built from `apps/receiver/Dockerfile`
-- `worker` — built from `apps/worker/Dockerfile`
+- `mysql` (port 3306) - DDL/stored procs from `sql/*.sql` auto-load on first boot
+- `rabbitmq` (5672, UI on 15672) - management plugin
+- `receiver` (port 8000) - built from `apps/receiver/Dockerfile`
+- `worker` - built from `apps/worker/Dockerfile`
 
 Wait for all four to be `(healthy)` (or `Up` for the worker, which has no HTTP surface):
 
@@ -402,7 +400,7 @@ docker compose ps
 docker compose --profile e2e up e2e-driver
 ```
 
-The `e2e-driver` service (profile-gated) is a tiny image built from `Dockerfile.e2e` — it has only Python 3.14 and `httpx`, plus `data/webhook_payloads.json` baked in. It talks to the receiver over the in-network hostname `receiver:8000`, runs once, and exits with code 0.
+The `e2e-driver` service (profile-gated) is a tiny image built from `Dockerfile.e2e` - it has only Python 3.14 and `httpx`, plus `data/webhook_payloads.json` baked in. It talks to the receiver over the in-network hostname `receiver:8000`, runs once, and exits with code 0.
 
 Sample output:
 
