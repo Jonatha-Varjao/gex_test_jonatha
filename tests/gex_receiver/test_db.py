@@ -222,7 +222,7 @@ class TestCheckIdempotency:
         stmt, params = session.execute.await_args.args
         assert "INSERT INTO processed_events" in str(stmt)
         assert "ON DUPLICATE KEY UPDATE" in str(stmt)
-        assert "VALUES(correlation_id)" in str(stmt)
+        assert "new.correlation_id" in str(stmt)
         assert uuid.UUID(params["id"]).version == 7
         assert params["gateway"] == GATEWAY_GRUMMER
         assert params["transaction_id"] == "tx-99"

@@ -2,8 +2,8 @@
 
 These tests validate that:
   - insert_raw_payload works against a real schema and returns a UUIDv7 id.
-  - check_idempotency enforces the (gateway, transaction_id, event) UNIQUE
-    constraint at the DB level.
+  - check_idempotency enforces the (transaction_id, event) UNIQUE
+    constraint at the DB level (natural key per spec, gateway excluded).
   - The receiver-layer idempotency holds under concurrent access — i.e. two
     webhook deliveries with the same natural key, fired in parallel, produce
     exactly one "new" result and the rest as "duplicates".
@@ -35,6 +35,7 @@ from gex_common.config import (
     EVENT_ORDER_REFUNDED,
     GATEWAY_GRUMMER,
     GATEWAY_LOUS,
+    PAYMENT_APPROVED,
     STATUS_ACCEPTED,
     STATUS_DECRYPT_FAILED,
     VALID_GATEWAYS,
@@ -220,7 +221,7 @@ tx_st = st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789", min_size=1, max
 
 
 class TestIdempotencyRaceConditions:
-    """Prove the UNIQUE (gateway, transaction_id, event) constraint holds
+    """Prove the UNIQUE (transaction_id, event) constraint holds
     even when many concurrent calls race on the same key.
     """
 
@@ -307,8 +308,8 @@ class TestIdempotencyRaceConditions:
         """Two concurrent calls with different natural keys must both be new
         and must produce two persisted rows.
         """
-        if (gateway_a, tx, event_a) == (gateway_b, tx, event_b):
-            return  # Hypothesis sometimes hits the same triple — skip.
+        if event_a == event_b:
+            return  # same (tx, event) key — skip, covered by test_concurrent_same_key
 
         tasks = [
             check_idempotency(
@@ -405,7 +406,7 @@ class TestSpInsertLeadIntegration:
             "quantity": 1,
             "amount_usd": 99.99,
             "payment_method": "credit_card",
-            "payment_status": "approved",
+            "payment_status": PAYMENT_APPROVED,
             "correlation_id": "corr-sp-1",
             "lag_seconds": 0.123,
         }

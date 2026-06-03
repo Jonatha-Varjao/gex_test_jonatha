@@ -58,11 +58,6 @@ def webhook_payloads():
 
 
 @pytest.fixture(scope="session")
-def grummer_secret():
-    return (DATA_DIR / "grummer_secret.txt").read_text().strip()
-
-
-@pytest.fixture(scope="session")
 def lous_payloads(webhook_payloads):
     return [p for p in webhook_payloads if p.get("gateway") == GATEWAY_LOUS]
 
@@ -225,17 +220,8 @@ def mysql_container():
             try:
                 from sqlalchemy import text
 
-                # Align database collation with the table DDL so table columns
-                # and stored procedure parameters use the same collation.
-                # MySQL 8.4 defaults to utf8mb4_0900_ai_ci; our DDL declares
-                # utf8mb4_unicode_ci.
-                async with engine.begin() as conn:
-                    await conn.execute(
-                        text(
-                            f"ALTER DATABASE `{container.dbname}` "
-                            "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-                        )
-                    )
+                # Database inherits MySQL 8.4's character set defaults;
+                # all tables use the default utf8mb4 collation.
                 for script_name in _MYSQL_SCHEMA_SCRIPTS:
                     sql_path = SQL_DIR / script_name
                     sql_text = sql_path.read_text()

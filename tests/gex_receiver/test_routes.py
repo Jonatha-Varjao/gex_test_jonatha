@@ -14,15 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gex_common.config import (
     EVENT_ORDER_APPROVED,
+    EVENT_ORDER_REFUNDED,
     GATEWAY_GRUMMER,
     GATEWAY_LOUS,
     PAYMENT_APPROVED,
+    PAYMENT_REFUNDED,
     QUEUE_DLQ_SCHEMA_FAILED,
     STATUS_ACCEPTED,
     STATUS_DECRYPT_FAILED,
     STATUS_DISCARDED_NON_APPROVED,
     STATUS_DUPLICATE,
     STATUS_SCHEMA_FAILED,
+    AppSettings,
 )
 from gex_common.models import (
     CustomerData,
@@ -40,7 +43,7 @@ def _valid_lous_payload() -> dict:
     return {
         "transaction_id": "tx-valid-001",
         "transaction_time": "2026-01-15T10:30:00+00:00",
-        "event": "order.approved",
+        "event": EVENT_ORDER_APPROVED,
         "customer": {
             "email": "test@example.com",
             "first_name": "Test",
@@ -57,7 +60,7 @@ def _valid_lous_payload() -> dict:
         "payment": {
             "amount_usd": 99.99,
             "method": "credit_card",
-            "status": "approved",
+            "status": PAYMENT_APPROVED,
         },
     }
 
@@ -103,9 +106,9 @@ def mock_publisher() -> AsyncMock:
 
 @pytest.fixture
 def mock_settings() -> MagicMock:
-    """Returns a mock AppSettings with grummer_secret_hex."""
+    """Returns a mock AppSettings with grummer_secret_hex from env."""
     settings = MagicMock()
-    settings.grummer_secret_hex = "bd8fe643a6e1b725db136104efebe450243ed7ef6c6a755ab9b2315fb648f153"
+    settings.grummer_secret_hex = AppSettings().grummer_secret_hex
     return settings
 
 
@@ -117,8 +120,10 @@ def api_client(mock_session, mock_publisher, mock_settings):
         get_publisher,
         get_settings,
     )
+    from gex_receiver.main import StructLogMiddleware
 
     app = FastAPI()
+    app.add_middleware(StructLogMiddleware)
     app.include_router(router)
 
     async def override_session():
@@ -174,8 +179,8 @@ class TestLousValidPayloads:
         routes_module.check_idempotency = AsyncMock(return_value=True)
         try:
             payload = _valid_lous_payload()
-            payload["event"] = "order.refunded"
-            payload["payment"]["status"] = "refunded"
+            payload["event"] = EVENT_ORDER_REFUNDED
+            payload["payment"]["status"] = PAYMENT_REFUNDED
             async with api_client as client:
                 response = await client.post(f"/webhooks/{GATEWAY_LOUS}", json=payload)
             assert response.status_code == 200
@@ -206,7 +211,7 @@ class TestLousValidPayloads:
     async def test_invalid_schema_returns_202(self, api_client, mock_session, mock_publisher):
         bad_payload = {
             "transaction_id": "tx-001",
-            "event": "order.approved",
+            "event": EVENT_ORDER_APPROVED,
             # Missing transaction_time, customer, product, payment
         }
         async with api_client as client:
