@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.7
+# ─────────────────────────────────────────────────────────────────────────────
+# gex-e2e driver — one-shot test tool
+#
+# Tiny image: python:3.14-slim-trixie + httpx + the load script + the public
+# dataset (webhook_payloads.json + expected_summary_meta.json). The grummer
+# secret is NEVER baked in (it stays in the host .env and is consumed by the
+# receiver/worker at runtime).
+#
+# Use only via: docker compose --profile e2e up
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM python:3.14-slim-trixie
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir httpx
+
+COPY scripts/load_payloads.py scripts/load_payloads.py
+COPY data/webhook_payloads.json data/webhook_payloads.json
+COPY data/expected_summary_meta.json data/expected_summary_meta.json
+
+# Default args: talk to the in-network receiver service, default concurrency.
+# Override with `docker compose run e2e-driver -- --concurrency 50 --repeat 3`.
+ENTRYPOINT ["python", "scripts/load_payloads.py", "--receiver", "http://receiver:8000"]
+CMD []
