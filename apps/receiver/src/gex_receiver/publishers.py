@@ -80,47 +80,38 @@ class RabbitMQPublisher:
         dist_dead_sms = await self._channel.declare_queue(QUEUE_DIST_DLQ_SMS, durable=True)
         await dist_dead_sms.bind(self._exchange_dist, routing_key=QUEUE_DIST_DLQ_SMS)
 
-    async def publish_lead_received(self, msg: LeadReceivedMessage) -> None:
-        if self._exchange_lead is None:
+    async def _publish(
+        self,
+        exchange: aio_pika.abc.AbstractExchange,
+        msg: LeadReceivedMessage | DLQMessage | DistributionMessage,
+        routing_key: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
+        if exchange is None:
             raise RuntimeError("declare_topology() must be called before publishing")
-        body = _serialize(msg.model_dump())
-        await self._exchange_lead.publish(
+        headers = {"x-correlation-id": msg.correlation_id, **(extra_headers or {})}
+        await exchange.publish(
             aio_pika.Message(
-                body=body,
+                body=_serialize(msg.model_dump()),
                 content_type="application/json",
-                headers={"x-correlation-id": msg.correlation_id},
+                headers=headers,
             ),
-            routing_key=QUEUE_LEAD_RECEIVED,
+            routing_key=routing_key,
         )
 
+    async def publish_lead_received(self, msg: LeadReceivedMessage) -> None:
+        await self._publish(self._exchange_lead, msg, QUEUE_LEAD_RECEIVED)
+
     async def publish_dlq(self, msg: DLQMessage, queue_name: str) -> None:
-        if self._exchange_lead is None:
-            raise RuntimeError("declare_topology() must be called before publishing")
-        body = _serialize(msg.model_dump())
-        await self._exchange_lead.publish(
-            aio_pika.Message(
-                body=body,
-                content_type="application/json",
-                headers={
-                    "x-correlation-id": msg.correlation_id,
-                    "x-error-reason": msg.error_reason[:200],
-                },
-            ),
-            routing_key=queue_name,
+        await self._publish(
+            self._exchange_lead,
+            msg,
+            queue_name,
+            extra_headers={"x-error-reason": msg.error_reason[:200]},
         )
 
     async def publish_distribution(self, msg: DistributionMessage, queue_name: str) -> None:
-        if self._exchange_dist is None:
-            raise RuntimeError("declare_topology() must be called before publishing")
-        body = _serialize(msg.model_dump())
-        await self._exchange_dist.publish(
-            aio_pika.Message(
-                body=body,
-                content_type="application/json",
-                headers={"x-correlation-id": msg.correlation_id},
-            ),
-            routing_key=queue_name,
-        )
+        await self._publish(self._exchange_dist, msg, queue_name)
 
     async def close(self) -> None:
         if self._connection is not None:

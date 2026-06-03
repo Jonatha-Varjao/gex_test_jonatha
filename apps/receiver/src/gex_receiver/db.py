@@ -94,6 +94,8 @@ async def check_idempotency(
     """Attempt INSERT into processed_events ON DUPLICATE KEY UPDATE.
 
     Returns True if inserted (new), False if duplicate.
+    Natural key: (transaction_id, event) per the spec (gateway is stored
+    for tracking but excluded from the UNIQUE constraint).
     """
     event_id = str(uuid.uuid7())
     stmt = text(
@@ -102,8 +104,8 @@ async def check_idempotency(
             id, gateway, transaction_id, event, correlation_id, created_at
         ) VALUES (
             :id, :gateway, :transaction_id, :event, :correlation_id, NOW(6)
-        )
-        ON DUPLICATE KEY UPDATE correlation_id = VALUES(correlation_id)
+        ) AS new
+        ON DUPLICATE KEY UPDATE correlation_id = new.correlation_id
         """
     )
     params = {

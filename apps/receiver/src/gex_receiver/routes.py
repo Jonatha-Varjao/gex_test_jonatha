@@ -28,18 +28,63 @@ from gex_common.models import (
     ProcessingResult,
 )
 from gex_common.validation import validate_schema
-from gex_receiver.db import insert_raw_payload
+from gex_receiver.db import check_idempotency, insert_raw_payload
 from gex_receiver.dependencies import (
     CorrelationId,
     DbDep,
     PublisherDep,
     SettingsDep,
 )
-from gex_receiver.idempotency import check_idempotency
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+async def _fail_and_return(
+    session,
+    publisher,
+    gateway,
+    received_at,
+    headers,
+    body_original,
+    body_decrypted,
+    result_status,
+    error_reason,
+    dlq_payload,
+    dlq_queue,
+    correlation_id,
+) -> JSONResponse:
+    """Persist a failed raw payload, publish to DLQ, return 202 JSONResponse."""
+    await insert_raw_payload(
+        session,
+        gateway,
+        received_at,
+        headers,
+        body_original,
+        body_decrypted,
+        result_status,
+        error_reason,
+        correlation_id,
+    )
+    await publisher.publish_dlq(
+        DLQMessage(
+            original_payload=dlq_payload,
+            error_reason=error_reason,
+            gateway=gateway,
+            correlation_id=correlation_id,
+            queue_origin=dlq_queue,
+        ),
+        dlq_queue,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=ProcessingResult(
+            status=result_status,
+            correlation_id=correlation_id,
+            error_detail=error_reason,
+        ).model_dump(),
+    )
 
 
 @router.post(
@@ -96,9 +141,9 @@ async def receive_webhook(
                 )
                 body_decrypted = json.loads(plaintext)
             except (DecryptionError, json.JSONDecodeError, TypeError, ValueError) as e:
-                # Persist decrypt_failed raw payload
-                await insert_raw_payload(
+                return await _fail_and_return(
                     session,
+                    publisher,
                     gateway,
                     received_at,
                     headers,
@@ -106,25 +151,9 @@ async def receive_webhook(
                     None,
                     STATUS_DECRYPT_FAILED,
                     str(e),
-                    correlation_id,
-                )
-                await publisher.publish_dlq(
-                    DLQMessage(
-                        original_payload=body_original,
-                        error_reason=str(e),
-                        gateway=gateway,
-                        correlation_id=correlation_id,
-                        queue_origin=QUEUE_DLQ_DECRYPT_FAILED,
-                    ),
+                    body_original,
                     QUEUE_DLQ_DECRYPT_FAILED,
-                )
-                return JSONResponse(
-                    status_code=status.HTTP_202_ACCEPTED,
-                    content=ProcessingResult(
-                        status=STATUS_DECRYPT_FAILED,
-                        correlation_id=correlation_id,
-                        error_detail=str(e),
-                    ).model_dump(),
+                    correlation_id,
                 )
 
         # 5. Lous or grummer-as-plaintext
@@ -135,8 +164,9 @@ async def receive_webhook(
         validation_result = validate_schema(body_decrypted)
         if not validation_result.is_valid:
             errors_str = "; ".join(f"{e.field}: {e.message}" for e in validation_result.errors)
-            await insert_raw_payload(
+            return await _fail_and_return(
                 session,
+                publisher,
                 gateway,
                 received_at,
                 headers,
@@ -144,25 +174,9 @@ async def receive_webhook(
                 body_decrypted,
                 STATUS_SCHEMA_FAILED,
                 errors_str,
-                correlation_id,
-            )
-            await publisher.publish_dlq(
-                DLQMessage(
-                    original_payload=body_decrypted,
-                    error_reason=errors_str,
-                    gateway=gateway,
-                    correlation_id=correlation_id,
-                    queue_origin=QUEUE_DLQ_SCHEMA_FAILED,
-                ),
+                body_decrypted,
                 QUEUE_DLQ_SCHEMA_FAILED,
-            )
-            return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED,
-                content=ProcessingResult(
-                    status=STATUS_SCHEMA_FAILED,
-                    correlation_id=correlation_id,
-                    error_detail=errors_str,
-                ).model_dump(),
+                correlation_id,
             )
 
         payload = validation_result.payload
@@ -176,7 +190,7 @@ async def receive_webhook(
             customer_id=anonymize_customer_id(payload.customer.email),
         )
 
-        # 8. Idempotency check
+        # 8. Idempotency check (natural key: transaction_id + event)
         is_new = await check_idempotency(
             session,
             gateway,

@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
+import structlog
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,10 +32,7 @@ def get_settings(request: Request) -> AppSettings:
 
 
 def get_correlation_id(request: Request) -> str:
-    correlation_id = request.headers.get("x-correlation-id")
-    if not correlation_id:
-        correlation_id = str(uuid4())
-    return correlation_id
+    return structlog.contextvars.get_contextvars().get("request_id", str(uuid4()))
 
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]

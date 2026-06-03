@@ -8,12 +8,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from gex_common.config import AppSettings
 from gex_common.logging import get_access_logger, get_app_logger, setup_logging
-from gex_receiver.config import APP_SETTINGS
 from gex_receiver.db import Database
 from gex_receiver.health import router as health_router
 from gex_receiver.publishers import RabbitMQPublisher
 from gex_receiver.routes import router as webhook_router
+
+APP_SETTINGS = AppSettings()
 
 
 class StructLogMiddleware:
