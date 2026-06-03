@@ -1,4 +1,11 @@
-version: "3.9"
+# ─────────────────────────────────────────────────────────────────────────────
+# GEX Webhook Pipeline — full stack
+#
+# Quick start (host only needs Docker):
+#   1. cp .env.example .env   (fill GRUMMER_SECRET_HEX + WEBHOOK_SITE_URL)
+#   2. docker compose up -d --build
+#   3. docker compose --profile e2e up e2e-driver   (optional E2E run)
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
   mysql:
@@ -36,6 +43,76 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+
+  # ── Apps ────────────────────────────────────────────────────────────────
+  # Build context is the repo root (uv needs the workspace). The two
+  # Dockerfiles are colocated with their respective apps:
+  #   apps/receiver/Dockerfile  →  gex_test_jonatha-receiver
+  #   apps/worker/Dockerfile    →  gex_test_jonatha-worker
+  # The receiver image does NOT contain worker code and vice-versa.
+
+  receiver:
+    build:
+      context: .
+      dockerfile: apps/receiver/Dockerfile
+    image: gex_test_jonatha-receiver:latest
+    environment:
+      DATABASE_URL: mysql+asyncmy://gex:gex@mysql:3306/gex
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      GRUMMER_SECRET_HEX: ${GRUMMER_SECRET_HEX:?set in .env}
+      WEBHOOK_SITE_URL: ${WEBHOOK_SITE_URL:-}
+      SMS_FAILURE_RATE: ${SMS_FAILURE_RATE:-0.1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: docker
+      MAX_REQUEST_SIZE_KB: ${MAX_REQUEST_SIZE_KB:-1024}
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: gex_test_jonatha-worker:latest
+    environment:
+      DATABASE_URL: mysql+asyncmy://gex:gex@mysql:3306/gex
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      GRUMMER_SECRET_HEX: ${GRUMMER_SECRET_HEX:?set in .env}
+      WEBHOOK_SITE_URL: ${WEBHOOK_SITE_URL:-}
+      SMS_FAILURE_RATE: ${SMS_FAILURE_RATE:-0.1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: docker
+      CONSUMER_CONCURRENCY: ${CONSUMER_CONCURRENCY:-1}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      receiver:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── E2E driver (opt-in via --profile e2e) ───────────────────────────────
+  # One-shot container that POSTs data/webhook_payloads.json to the receiver
+  # and exits. Use:
+  #   docker compose --profile e2e up e2e-driver
+  # Override concurrency / repeats via:
+  #   docker compose --profile e2e run e2e-driver -- --concurrency 50 --repeat 3
+  e2e-driver:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    image: gex_test_jonatha-e2e:latest
+    profiles: ["e2e"]
+    depends_on:
+      receiver:
+        condition: service_started
+    restart: "no"
 
 volumes:
   mysql_data:
