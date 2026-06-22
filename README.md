@@ -1,4 +1,4 @@
-# GEX Webhook Pipeline
+# Webhook Pipeline
 
 A webhook processing pipeline that receives encrypted (grummer) and plaintext (lous) payloads, validates, queues, consumes, and distributes leads to multiple channels (SMS, email, call center, WhatsApp).
 
@@ -6,14 +6,14 @@ A webhook processing pipeline that receives encrypted (grummer) and plaintext (l
 
 ```mermaid
 flowchart LR
-    G[Gateway<br/>grummer / lous] -->|HTTP POST| R[gex_receiver<br/>FastAPI]
+    G[Gateway<br/>grummer / lous] -->|HTTP POST| R[ _receiver<br/>FastAPI]
 
     R -->|decrypt_failed| DLQ1[lead.dead.decrypt_failed]
     R -->|schema_failed| DLQ2[lead.dead.schema_failed]
     R -->|accepted + approved| LEAD[(lead.received)]
     R -->|discarded_non_approved| RP[(raw_payloads)]
 
-    LEAD --> W[gex_worker<br/>FastStream consumer]
+    LEAD --> W[ _worker<br/>FastStream consumer]
     W -->|sp_insert_lead| DB[(MySQL 8.4<br/>leads, orders,<br/>lead_events,<br/>distribution_status)]
     W -->|4x publish| DIST{4 distribution queues}
     W -->|3 retries exhausted| DLQ3[lead.dead.consumer_failed]
@@ -30,20 +30,20 @@ flowchart LR
 ## Project Structure
 
 ```
-gex_test_jonatha/
+ _test_jonatha/
 ├── libs/
-│   └── common/src/gex_common/    # Shared library: config, crypto, models, validation, logging
+│   └── common/src/ _common/    # Shared library: config, crypto, models, validation, logging
 ├── apps/
 │   ├── receiver/
 │   │   ├── Dockerfile              # Multi-stage build (receiver only)
-│   │   └── src/gex_receiver/       # HTTP layer (FastAPI)
+│   │   └── src/ _receiver/       # HTTP layer (FastAPI)
 │   │       ├── main.py, routes.py, dependencies.py
 │   │       ├── db.py, idempotency.py
 │   │       ├── publishers.py, health.py
 │   │       └── __init__.py
 │   └── worker/
 │       ├── Dockerfile              # Multi-stage build (worker only)
-│       └── src/gex_worker/         # Background jobs (FastStream)
+│       └── src/ _worker/         # Background jobs (FastStream)
 │           ├── main.py, config.py, db.py
 │           ├── consumers.py, distributors.py
 │           ├── dlq.py, middleware.py, exception_handlers.py
@@ -57,9 +57,9 @@ gex_test_jonatha/
 │   ├── 003_stored_procs.sql
 │   └── audit_queries.sql
 ├── tests/
-│   ├── gex_common/                 
-│   ├── gex_receiver/               
-│   ├── gex_worker/                 
+│   ├──  _common/                 
+│   ├──  _receiver/               
+│   ├──  _worker/                 
 │   └── integration/                
 ├── scripts/
 │   └── load_payloads.py            # 200-payload E2E driver
@@ -100,11 +100,11 @@ This builds two lean production images from per-app Dockerfiles and starts four 
 |---------|-------|------|---------|
 | `mysql` | `mysql:8.4` | 3306 | (always) |
 | `rabbitmq` | `rabbitmq:4.2-management` | 5672 / 15672 | (always) |
-| `receiver` | `gex_test_jonatha-receiver:latest` (built from `apps/receiver/Dockerfile`) | 8000 | (always) |
-| `worker` | `gex_test_jonatha-worker:latest` (built from `apps/worker/Dockerfile`) |  | (always) |
-| `e2e-driver` | `gex_test_jonatha-e2e:latest` (built from `Dockerfile.e2e`) |  | `e2e` |
+| `receiver` | ` _test_jonatha-receiver:latest` (built from `apps/receiver/Dockerfile`) | 8000 | (always) |
+| `worker` | ` _test_jonatha-worker:latest` (built from `apps/worker/Dockerfile`) |  | (always) |
+| `e2e-driver` | ` _test_jonatha-e2e:latest` (built from `Dockerfile.e2e`) |  | `e2e` |
 
-The receiver image contains `gex_common` + `gex_receiver` only; the worker image contains `gex_common` + `gex_worker` only. The modularization is preserved at the image layer - a worker rebuild does not need to touch the receiver.
+The receiver image contains ` _common` + ` _receiver` only; the worker image contains ` _common` + ` _worker` only. The modularization is preserved at the image layer - a worker rebuild does not need to touch the receiver.
 
 **3. Verify the stack:**
 
@@ -151,25 +151,25 @@ docker compose up -d mysql rabbitmq
 
 ```bash
 uv sync --all-packages
-uv run --package gex-receiver uvicorn gex_receiver.main:app --reload --port 8000
+uv run --package  -receiver uvicorn  _receiver.main:app --reload --port 8000
 ```
 
 Or using the FastAPI CLI:
 
 ```bash
-uv run fastapi dev apps/receiver/src/gex_receiver/main.py
+uv run fastapi dev apps/receiver/src/ _receiver/main.py
 ```
 
 **3. Run the worker (FastStream):**
 
 ```bash
-uv run --package gex-worker faststream run gex_worker.main:app
+uv run --package  -worker faststream run  _worker.main:app
 ```
 
 For the E2E from the host, point the driver at the in-network host port:
 
 ```bash
-uv run --package gex-receiver python scripts/load_payloads.py --receiver http://localhost:8000
+uv run --package  -receiver python scripts/load_payloads.py --receiver http://localhost:8000
 ```
 
 ## Environment Variables
@@ -178,7 +178,7 @@ Configured via `.env` (see `.env.example` for template):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATABASE_URL` | `mysql+asyncmy://gex:gex@localhost:3306/gex` | MySQL connection (async) |
+| `DATABASE_URL` | `mysql+asyncmy:// : @localhost:3306/ ` | MySQL connection (async) |
 | `DATABASE_POOL_SIZE` | `10` | SQLAlchemy pool size |
 | `DATABASE_MAX_OVERFLOW` | `20` | Max overflow connections |
 | `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection |
@@ -222,7 +222,7 @@ uv run pytest -m unit
 uv run pytest -m integration
 
 # Specific file
-uv run pytest tests/gex_receiver/test_routes.py
+uv run pytest tests/ _receiver/test_routes.py
 
 # With coverage
 uv run pytest --cov
@@ -274,7 +274,7 @@ uv run vulture libs apps --exclude tests/
 ```bash
 uv run ruff check . && \
 uv run ruff format --check . && \
-uv run pytest -m unit --ignore=tests/gex_receiver/test_publishers.py && \
+uv run pytest -m unit --ignore=tests/ _receiver/test_publishers.py && \
 uv run vulture libs apps --exclude tests/
 ```
 
@@ -354,14 +354,14 @@ For `lous` or `grummer` plaintext:
 
 | Component | Status | Tests |
 |-----------|--------|-------|
-| `gex_common` (config, crypto, models, validation, logging) | Done | 75 unit |
-| `gex_receiver` (HTTP layer + idempotency + DLQ publisher) | Done | 48 unit |
-| `gex_worker` (FastStream consumer + 3-attempt retry + DLQ middleware + SMS distributor) | Done |  |
+| ` _common` (config, crypto, models, validation, logging) | Done | 75 unit |
+| ` _receiver` (HTTP layer + idempotency + DLQ publisher) | Done | 48 unit |
+| ` _worker` (FastStream consumer + 3-attempt retry + DLQ middleware + SMS distributor) | Done |  |
 | DB layer (CRUD + stored procedures, `tests/integration/test_mysql_db.py`) | Done | 16 integration |
 | RabbitMQ publisher (`tests/integration/test_rabbitmq_publisher.py`) | Done | 6 integration |
 | Audit queries (`sql/audit_queries.sql`) | Done |  |
 | E2E with real MySQL 8.4 + RabbitMQ 4.2 (`scripts/load_payloads.py`) | Verified, see [End-to-End Validation](#end-to-end-validation) |  |
-| `gex_worker` unit tests | Pending | 0 |
+| ` _worker` unit tests | Pending | 0 |
 | Receiver + worker Dockerfiles (`apps/<app>/Dockerfile`) | Done |  |
 | `docs/explicativo.md` | Done |  |
 | Loom walkthrough | Pending |  |
@@ -436,8 +436,8 @@ The breakdown matches `data/expected_summary_meta.json` exactly. `processed_even
 Inspect with:
 
 ```bash
-docker exec gex_test_jonatha-mysql-1 \
-  mysql -uroot -pgexroot gex \
+docker exec  _test_jonatha-mysql-1 \
+  mysql -uroot -p root   \
   -e "SELECT processing_status, COUNT(*) FROM raw_payloads GROUP BY processing_status;"
 ```
 
